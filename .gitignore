@@ -1,0 +1,9 @@
+*.o
+*.a
+*.so
+build/
+*.hex
+*.key
+crypto-lab
+test_*
+rsa/prime_numbers
