@@ -7,3 +7,5 @@ build/
 crypto-lab
 test_*
 rsa/prime_numbers
+.vscode/
+*.txt
