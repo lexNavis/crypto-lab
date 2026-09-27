@@ -1,5 +1,5 @@
 #include "prime.h"
-#include "entropy.h"
+#include "../common/entropy.h"
 
 int generate_prime(mpz_t val, unsigned int bits)
 {
