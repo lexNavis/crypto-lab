@@ -32,20 +32,6 @@ int kuz_encrypt(uint8_t block[16], const kuz_key_t *key);
  */
 int kuz_decrypt(uint8_t block[16], const kuz_key_t *key);
 
-/**
- * @brief Печать 16 байтового числа
- * @param [blk] - массив 16 байт, содержащий число
- */
-void print_block(uint8_t blk[16]);
-
-void test_solo_arg(
-    uint8_t out[16], 
-    uint8_t args[][16],
-    size_t count, 
-    void(*func)(uint8_t*, uint8_t*)
-);
-
-void test_f(uint8_t arg_1[16], uint8_t arg_2[16], uint8_t module[16]);
 #endif /* KUZNYECHIK_H */
 
 

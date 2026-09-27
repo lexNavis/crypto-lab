@@ -31,15 +31,6 @@ static const uint8_t pi_inv[256] = {
     152, 2, 147, 128, 144, 208, 36, 52, 203, 237, 244, 206, 153, 16, 68, 64, 146, 58, 1, 38, 18, 26, 72, 104, 245, 129,
     139, 199, 214, 32, 10, 8, 0, 76, 215, 116};
 
-void print_block(uint8_t blk[16])
-{
-  for (int i = 15; i >= 0; i--)
-  {
-    printf("%02x", blk[i]);
-  }
-  printf("\n");
-}
-
 /* Умножение в GF(2^8) по модулю p(x) = x^8 + x^7 + x^6 + x + 1. */
 static void gf_2x_px_mul(uint16_t *res, uint8_t arg_1, uint8_t arg_2)
 {
@@ -94,7 +85,7 @@ static void gf_2x_px_mul(uint16_t *res, uint8_t arg_1, uint8_t arg_2)
 }
 
 /* out = X[module](arg) = m_i ^ a_i (i = 0, 15)*/
-static void op_x(uint8_t out[16], uint8_t arg[16], uint8_t module[16])
+static void op_x(uint8_t out[16], const uint8_t arg[16], const uint8_t module[16])
 {
   for (int i = 0; i < 16; i++)
   {
@@ -102,7 +93,7 @@ static void op_x(uint8_t out[16], uint8_t arg[16], uint8_t module[16])
   }
 }
 /* out = S(arg) = pi_i(arg) (i = 0, 15)*/
-void op_s(uint8_t out[16], uint8_t arg[16])
+void op_s(uint8_t out[16], const uint8_t arg[16])
 {
   for (int i = 0; i < 16; i++)
   {
@@ -110,7 +101,7 @@ void op_s(uint8_t out[16], uint8_t arg[16])
   }
 }
 /* out = S_inv(arg) = pi_inv_i(arg) (i = 0, 15)*/
-static void op_s_inv(uint8_t out[16], uint8_t arg[16])
+static void op_s_inv(uint8_t out[16], const uint8_t arg[16])
 {
   for (int i = 0; i < 16; i++)
   {
@@ -118,7 +109,7 @@ static void op_s_inv(uint8_t out[16], uint8_t arg[16])
   }
 }
 /* l(a_15,..,a_0) = sum((ki * a15-i) mod p(x))*/
-static void op_linear(uint8_t *out, uint8_t arg[16])
+static void op_linear(uint8_t *out, const uint8_t arg[16])
 {
   *out = 0;
   uint8_t koefs[16] = {
@@ -134,7 +125,7 @@ static void op_linear(uint8_t *out, uint8_t arg[16])
   }
 }
 /* Сдвиг вправо аргумента и запись L(a) в старший байт */
-static void op_r(uint8_t out[16], uint8_t arg[16])
+static void op_r(uint8_t out[16], const uint8_t arg[16])
 {
 
   uint8_t tmp;
@@ -146,7 +137,7 @@ static void op_r(uint8_t out[16], uint8_t arg[16])
   out[15] = tmp;
 }
 /* Выполнение операции R 16 раз над самим собой */
-static void op_l(uint8_t out[16], uint8_t arg[16])
+static void op_l(uint8_t out[16], const uint8_t arg[16])
 {
   /* Первую итерацию надо провести с внешним
    * аргументом, а остальные 15 проводятся сами
@@ -158,7 +149,7 @@ static void op_l(uint8_t out[16], uint8_t arg[16])
   }
 }
 /* Обратная R операция */
-static void op_r_inv(uint8_t out[16], uint8_t arg[16])
+static void op_r_inv(uint8_t out[16], const uint8_t arg[16])
 {
   /* Сделать копию для изменения порядка элементов */
   uint8_t arg_mod[16];
@@ -174,7 +165,7 @@ static void op_r_inv(uint8_t out[16], uint8_t arg[16])
 }
 
 /* Обратная L операция */
-static void op_l_inv(uint8_t out[16], uint8_t arg[16])
+static void op_l_inv(uint8_t out[16], const uint8_t arg[16])
 {
   op_r_inv(out, arg);
   for (int i = 1; i < 16; i++)
@@ -185,14 +176,14 @@ static void op_l_inv(uint8_t out[16], uint8_t arg[16])
   }
 }
 /* Композция функций LSX[mod](a) = L(S(X[mod](a))) */
-static void op_LSX(uint8_t arg_1[16], uint8_t module[16])
+static void op_LSX(uint8_t arg_1[16], const uint8_t module[16])
 {
   op_x(arg_1, arg_1, module);
   op_s(arg_1, arg_1);
   op_l(arg_1, arg_1);
 }
 /* Композция функций S^(-1)L^(-1)X[mod](a). Обратна LSX */
-static void op_LSX_inv(uint8_t arg_1[16], uint8_t module[16])
+static void op_LSX_inv(uint8_t arg_1[16], const uint8_t module[16])
 {
   op_x(arg_1, arg_1, module);
   op_l_inv(arg_1, arg_1);
@@ -200,7 +191,7 @@ static void op_LSX_inv(uint8_t arg_1[16], uint8_t module[16])
 }
 
 /* F[mod](a2, a1) = {LSX(a2)^a1, a2} */
-static void op_f(uint8_t arg_1[16], uint8_t arg_2[16], uint8_t module[16])
+static void op_f(uint8_t arg_1[16], uint8_t arg_2[16], const uint8_t module[16])
 {
   uint8_t new_arg_1[16];
 
@@ -283,36 +274,4 @@ int kuz_decrypt(uint8_t block[16], const kuz_key_t *key)
   }
   op_x(block, block, key->k_arr[0]);
   return 0;
-}
-
-void test_solo_arg(
-    uint8_t out[16],
-    uint8_t args[][16],
-    size_t count,
-    void (*func)(uint8_t *, uint8_t *))
-{
-  for (size_t i = 0; i < count; i++)
-  {
-    printf("Test %zu\n", i);
-    printf("Arg = ");
-    print_block(args[i]);
-    func(out, args[i]);
-    printf("Res = ");
-    print_block(out);
-  }
-}
-
-void test_f(uint8_t arg_1[16], uint8_t arg_2[16], uint8_t module[16])
-{
-  printf("Arg 1 = ");
-  print_block(arg_1);
-  printf("\nArg 2 = ");
-  print_block(arg_2);
-  printf("\nModule (C) = ");
-  print_block(module);
-  op_f(arg_1, arg_2, module);
-  printf("Res 1 = ");
-  print_block(arg_1);
-  printf("\nRes 2 = ");
-  print_block(arg_2);
 }
