@@ -8,7 +8,7 @@ int read_random_bytes(unsigned char *buf, size_t buf_size)
     /* Handle error */
     return -ERR_GET_RANDOM_FAIL_TOTAL;
   }
-  else if (bytes_read < buf_size)
+  else if ((size_t)bytes_read < buf_size)
   {
     /* Handle error */
     return -ERR_GET_RANDOM_FAIL_PARTIAL;
