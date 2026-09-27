@@ -1,14 +1,29 @@
 CC       = gcc
-CFLAGS   = -O2 -march=native -Wall -Wextra -I./common -I./rsa
-LDFLAGS  = -L/usr/local/lib
-LDLIBS = -lgmp -lpthread
+CFLAGS   = -O2 -march=native -Wall -Wextra
+LDFLAGS  =
+LDLIBS   = -lgmp -lpthread -lcjson
 
 BUILD    = build
+OBJDIR   = $(BUILD)/obj
+BIN      = $(BUILD)/main
 
-all: $(BUILD)/rsa
+SRCS     = main.c \
+           common/hex.c common/utils.c common/entropy.c common/config.c \
+           kuznyechik/kuznyechik.c \
+           rsa/prime.c rsa/rsa.c \
+           streebog/streebog.c \
+           tests/test_kuz.c tests/test_rsa.c tests/test_streebog.c
 
-$(BUILD)/rsa: rsa/*.c common/*.c main.c | $(BUILD)
-	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS) $(LDLIBS)
+OBJS     = $(SRCS:%.c=$(OBJDIR)/%.o)
+
+all: $(BIN)
+
+$(BIN): $(OBJS) | $(BUILD)
+	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS) $(LDLIBS)
+
+$(OBJDIR)/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD):
 	mkdir -p $(BUILD)
