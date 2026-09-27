@@ -1,78 +1,46 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <gmp.h>
-#include "rsa/rsa.h"
+#include "common/config.h"
+
+int run_kuz_test(bool use_random_key, const char *custom_block);
+int run_streebog_test(const char *custom_message);
+int run_rsa_test(unsigned int bits, bool from_file, const char *message);
 
 int main(int argc, char **argv)
 {
-    if (argc < 3) {
-        fprintf(stderr, "Usage: %s <generate|load> <RSA key size>\n", argv[0]);
-        return 1;
-    }
+  if (argc < 2)
+  {
+    fprintf(stderr, "Usage: %s <rsa|kuz|streebog|all>\n", argv[0]);
+    return 1;
+  }
+  config_t cfg;
+  /* Хардкод пути - наше всё */
+  int err = load_config("config.json", &cfg);
+  if (err < 0)
+  {
+    return err;
+  }
+  if (strcmp(argv[1], "rsa") == 0)
+  {
+    return run_rsa_test(cfg.rsa.bits, cfg.rsa.from_file, cfg.rsa.message);
+  }
+  if (strcmp(argv[1], "kuz") == 0)
+  {
+    return run_kuz_test(cfg.kuznyechik.use_random_key, cfg.kuznyechik.block);
+  }
+  if (strcmp(argv[1], "streebog") == 0)
+  {
+    return run_streebog_test(cfg.streebog.message);
+  }
+  if (strcmp(argv[1], "all") == 0)
+  {
+    int rc = 0;
+    rc |= run_kuz_test(cfg.kuznyechik.use_random_key, cfg.kuznyechik.block);
+    rc |= run_streebog_test(cfg.streebog.message);
+    rc |= run_rsa_test(cfg.rsa.bits, cfg.rsa.from_file, cfg.rsa.message);
+    return rc;
+  }
 
-    bool from_file;
-    if (strcmp(argv[1], "load") == 0) {
-        from_file = true;
-    } else if (strcmp(argv[1], "generate") == 0) {
-        from_file = false;
-    } else {
-        fprintf(stderr, "Unknown mode: %s\n", argv[1]);
-        return 1;
-    }
-
-    unsigned int bits = (unsigned int)atoi(argv[2]);
-    if (bits < 16) {
-        fprintf(stderr, "bits must be >= 16\n");
-        return 1;
-    }
-    rsa_key_t key;
-    rsa_key_init(&key);
-
-    int err = rsa_keygen(&key, bits, from_file);
-    if (err != 0) {
-        fprintf(stderr, "rsa_keygen failed: %d\n", err);
-        rsa_key_clear(&key);
-        return 1;
-    }
-
-    gmp_printf("n = %Zd\n", key.n);
-    gmp_printf("e = %Zd\n", key.e);
-    gmp_printf("d = %Zd\n", key.d);
-
-    /* Тест: шифрование/дешифрование */
-    mpz_t m, c, m2;
-    mpz_init_set_ui(m, 12345);   /* сообщение */
-    mpz_init(c);
-    mpz_init(m2);
-
-    err = rsa_encrypt(m, c, &key);
-    if (err != 0) {
-        fprintf(stderr, "rsa_encrypt failed: %d\n", err);
-        goto cleanup;
-    }
-
-    err = rsa_decrypt(c, m2, &key);
-    if (err != 0) {
-        fprintf(stderr, "rsa_decrypt failed: %d\n", err);
-        goto cleanup;
-    }
-
-    gmp_printf("m  = %Zd\n", m);
-    gmp_printf("c  = %Zd\n", c);
-    gmp_printf("m2 = %Zd\n", m2);
-
-    if (mpz_cmp(m, m2) == 0) {
-        printf("OK: decrypted == original\n");
-    } else {
-        printf("FAIL: decrypted != original\n");
-    }
-
-cleanup:
-    mpz_clear(m);
-    mpz_clear(c);
-    mpz_clear(m2);
-    rsa_key_clear(&key);
-    return err != 0 ? 1 : 0;
+  fprintf(stderr, "Unknown mode: %s\n", argv[1]);
+  return 1;
 }
