@@ -1,5 +1,5 @@
 CC       = gcc
-CFLAGS   = -O2 -march=native -Wall -Wextra
+CFLAGS = -O2 -g -march=native -Wall -Wextra
 LDFLAGS  =
 LDLIBS   = -lgmp -lpthread -lcjson
 
@@ -8,11 +8,12 @@ OBJDIR   = $(BUILD)/obj
 BIN      = $(BUILD)/main
 
 SRCS     = main.c \
-           common/hex.c common/utils.c common/entropy.c common/config.c \
+           common/hex.c common/entropy.c common/config.c \
            kuznyechik/kuznyechik.c \
            rsa/prime.c rsa/rsa.c \
            streebog/streebog.c \
-           tests/test_kuz.c tests/test_rsa.c tests/test_streebog.c
+           tests/test_kuz.c tests/args.c tests/test_rsa.c tests/test_streebog.c tests/test_bignum.c \
+           bignum/bignum.c
 
 OBJS     = $(SRCS:%.c=$(OBJDIR)/%.o)
 
