@@ -1,20 +1,19 @@
-#pragma once 
+#pragma once
 #include <stdint.h>
 #include <stddef.h>
-
 
 /* 
  * Тестовые векторы алгоритма "Кузнечик"
  */
 
 /* Входной вектор №1 */
-static const char *kuz_M1_char = "1122334455667700ffeeddccbbaa9988";
+extern const char *kuz_M1_char;
 /* Тестовый ключ К для проверки генерации сеансовых ключей */
-static const char *kuz_K_char = "8899aabbccddeeff0011223344556677fedcba98765432100123456789abcdef";
-
+extern const char *kuz_K_char;
 /* 
  * Тестовые векторы алгоритма "Стрибог-512"
  */
-
-static const char *streebog_M1_char = "323130393837363534333231303938373635343332313039383736353433323130393837363534333231303938373635343332313039383736353433323130";
-static const char *streebog_M2_char = "fbe2e5f0eee3c820fbeafaebef20fffbf0e1e0f0f520e0ed20e8ece0ebe5f0f2f120fff0eeec20f120faf2fee5e2202ce8f6f3ede220e8e6eee1e8f0f2d1202ce8f0f2e5e220e5d1";
+/* Входной вектор №1 */
+extern const char *streebog_M1_char;
+/* Входной вектор №2 */
+extern const char *streebog_M2_char;
