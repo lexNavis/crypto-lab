@@ -5,18 +5,18 @@
  * @struct Структура для описания конфигурации
  */
 typedef struct {
-    char run[16];
+    char run[16];           /* Режим работы */
     struct {
-        unsigned int bits;
-        bool from_file;
-        char message[256];
+        unsigned int bits;  /* Размер rsa - ключа */
+        bool from_file;     /* Использовать ли значения из файла */        
+        char message[256];  /* Сообщение для зашифровки/расшифровки */
     } rsa;
     struct {
-        bool use_random_key;
-        char block[64];  // hex-строка
+        bool use_random_key; /* Использовать ли случаный ключ */
+        char block[64];      /* Сообщение для зашифровки/расшифровки */
     } kuznyechik;
     struct {
-        char message[512];  // hex-строка
+        char message[512];   /* Сообщение для хэширования */
     } streebog;
 } config_t;
 /**
@@ -30,8 +30,8 @@ enum CONFIG_ERRORS {
 };
 /**
  * @brief Загружает конфиг в структуру config_t
- * @param [path] - путь к файлу
- * @param [config] - указатель на структуру config_t
+ * @param path Путь к файлу
+ * @param config Указатель на структуру config_t
  * @returns 0 в случае успеха, отрицательное значение в случае неудачи
  */
 int load_config(const char *path, config_t *config);

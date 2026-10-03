@@ -1,9 +1,11 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include "streebog.h"
 #include "../common/hex.h"
+#include "../bignum/bignum.h"
 
 /* Побайтовая подстановка по таблице pi.
  * out[i] = pi[arg[i]] — значение байта arg[i] используется как индекс в pi,
@@ -22,7 +24,7 @@ static const uint8_t pi[256] = {
     103, 164, 45, 43, 9, 91, 203, 155, 37, 208, 190, 229, 108, 82, 89, 166, 116, 210, 230, 244, 180, 192,
     209, 102, 175, 194, 57, 75, 99, 182};
 
-/* Значения перестановки. i-й байт выходного 
+/* Значения перестановки. i-й байт выходного
  * массива берется из tau[i]-го байта исходного */
 static const uint8_t tau[64] = {
     0, 8, 16, 24, 32, 40, 48, 56,
@@ -175,7 +177,7 @@ static const uint8_t C[12][64] = {
      0x7a, 0xb1, 0x49, 0x04, 0xb0, 0x80, 0x13, 0xd2,
      0xba, 0x31, 0x16, 0xf1, 0x67, 0xe7, 0x8e, 0x37}};
 
-
+/* Арифметическое сложение 64 байтовых чисел, расположенных в байтовых массивах */
 static void add512(uint8_t out[64], const uint8_t arg_1[64], const uint8_t arg_2[64])
 {
   uint8_t carry = 0;
@@ -202,6 +204,7 @@ static void vec_matrix_mul(uint64_t *res, const uint64_t *vec, const uint64_t ma
   }
 }
 
+/* Преобразование байтового массива в единое число uint64_t */
 static void btoi(uint64_t *out, const uint8_t arg[8])
 {
   *out = 0;
@@ -211,6 +214,7 @@ static void btoi(uint64_t *out, const uint8_t arg[8])
   }
 }
 
+/* Преобразование единого числа uint64_t в байтовый массив */
 void itob(uint8_t out[8], uint64_t arg)
 {
   for (int i = 0; i < 8; i++)
@@ -219,15 +223,19 @@ void itob(uint8_t out[8], uint64_t arg)
   }
 }
 
+/* Линейное преобразование над вектором. */
 static void op_l(uint8_t block[8])
 {
   uint64_t res = 0;
   uint64_t vec = 0;
+  /* Функция оперирует числами, а не векторами, поэтому необходимо приведение */
   btoi(&vec, block);
   vec_matrix_mul(&res, &vec, A);
+  /* Результат приводится к исходному виду */
   itob(block, res);
 }
 
+/* Поразрядный XOR над аргументами */
 static void op_X(uint8_t out[64], const uint8_t arg[64], const uint8_t module[64])
 {
   for (int i = 0; i < 64; i++)
@@ -236,6 +244,7 @@ static void op_X(uint8_t out[64], const uint8_t arg[64], const uint8_t module[64
   }
 }
 
+/* Поразрядное применение преобразования pi над аргументом */
 static void op_S(uint8_t out[64], const uint8_t arg[64])
 {
   for (int i = 0; i < 64; i++)
@@ -244,6 +253,7 @@ static void op_S(uint8_t out[64], const uint8_t arg[64])
   }
 }
 
+/* Поразрядное применение преобразования tau над аргументом */
 static void op_P(uint8_t out[64], const uint8_t arg[64])
 {
   uint8_t tmp[64];
@@ -254,6 +264,7 @@ static void op_P(uint8_t out[64], const uint8_t arg[64])
   memcpy(out, tmp, 64);
 }
 
+/* Поразрядное применение линейного преобразования над аргументом */
 static void op_L(uint8_t out[64], const uint8_t arg[64])
 {
   for (int i = 0; i < 8; i++)
@@ -276,6 +287,7 @@ static void op_LPSX(uint8_t out[64], const uint8_t arg[64], const uint8_t module
   op_LPS(out, out);
 }
 
+/* Основной цикл генерации сеансовых ключей */
 static void do_keygen(streebog_key_t *key, const uint8_t arg_K[64])
 {
   memcpy((*key)[0], arg_K, 64);
@@ -287,6 +299,8 @@ static void do_keygen(streebog_key_t *key, const uint8_t arg_K[64])
   }
 }
 
+/* Преобразует блок arg_m с использованием раундовых ключей,
+ * сгенерированных из arg_K. Состоит из 12 раундов LPSX + финальный XOR. */
 static void op_E(uint8_t out[64], uint8_t arg_m[64], const uint8_t arg_K[64])
 {
   streebog_key_t key;
@@ -299,9 +313,12 @@ static void op_E(uint8_t out[64], uint8_t arg_m[64], const uint8_t arg_K[64])
   op_X(out, out, key[12]);
 }
 
+/* g_N(h, m) — функция сжатия Стрибога.
+ * g_N(h, m) = E(LPS(h ⊕ N), m) ⊕ h ⊕ m.
+ * N — счётчик обработанных бит, m — блок сообщения, h — текущее состояние. */
 static void op_g(uint8_t out[64], const uint8_t arg_h[64], const uint8_t arg_m[64], const uint8_t arg_N[64])
 {
-  /* Защита на случай, если out = одному из входных аргументов */
+  /* Защита на случай, если out равен одному из входных аргументов */
   uint8_t h_copy[64];
   memcpy(h_copy, arg_h, 64);
   uint8_t N_copy[64];
@@ -326,6 +343,7 @@ int streebog_make_hash(uint8_t out[64], const uint8_t *M, size_t len)
   memset(sum, 0, 64);
 
   size_t i = 0;
+  /* Основной цикл сокращения длины сообщения */
   while (len >= 512)
   {
     uint8_t m[64];
@@ -361,4 +379,30 @@ int streebog_make_hash(uint8_t out[64], const uint8_t *M, size_t len)
 
   memcpy(out, h, 64);
   return 0;
+}
+
+int bignum_streebog_hash(bignum_t *res, const bignum_t *msg)
+{
+  if (!res || !msg)
+  {
+    return -ERR_NULLPTR;
+  }
+  /* Конвертируем сообщение в байты */
+  size_t byte_len = msg->length * sizeof(uint32_t);
+  uint8_t *bytes = malloc(byte_len);
+  if (!bytes)
+  {
+    return -ERR_MALLOC_FAILED;
+  }
+  bignum_to_ui8_array(bytes, byte_len, msg);
+  /* Считаем хэш */
+  uint8_t hash[64];
+  int err = streebog_make_hash(hash, bytes, byte_len);
+  free(bytes);
+  if (err < 0)
+  {
+    return err;
+  }
+  /* Конвертируем хэш обратно в bignum */
+  return bignum_from_ui8_array(res, hash, 64, false);
 }

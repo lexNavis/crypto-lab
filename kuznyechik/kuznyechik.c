@@ -1,8 +1,11 @@
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "kuznyechik.h"
+#include "../bignum/bignum.h"
 #include "../common/entropy.h"
 
+/* Вектор преобразований байтов числа. Байт со значением x будет заменен на байт pi(x) */
 static const uint8_t pi[256] = {
     252, 238, 221, 17, 207, 110, 49, 22, 251, 196, 250, 218, 35, 197, 4, 77, 233, 119, 240, 219, 147,
     46, 153, 186, 23, 54, 241, 187, 20, 205, 95, 193, 249, 24, 101, 90, 226, 92, 239, 33, 129, 28, 60, 66,
@@ -74,7 +77,6 @@ static void gf_2x_px_mul(uint16_t *res, uint8_t arg_1, uint8_t arg_2)
     /* Если степень уже не выше 7, то выходим */
     if (i == 7)
     {
-      // printf("Res: %04x\n", *res);
       break;
     }
     /* В ином случае мы осуществляем деление методом столбика:
@@ -85,7 +87,7 @@ static void gf_2x_px_mul(uint16_t *res, uint8_t arg_1, uint8_t arg_2)
 }
 
 /* out = X[module](arg) = m_i ^ a_i (i = 0, 15)*/
-static void op_x(uint8_t out[16], const uint8_t arg[16], const uint8_t module[16])
+static void op_X(uint8_t out[16], const uint8_t arg[16], const uint8_t module[16])
 {
   for (int i = 0; i < 16; i++)
   {
@@ -93,7 +95,7 @@ static void op_x(uint8_t out[16], const uint8_t arg[16], const uint8_t module[16
   }
 }
 /* out = S(arg) = pi_i(arg) (i = 0, 15)*/
-void op_s(uint8_t out[16], const uint8_t arg[16])
+void op_S(uint8_t out[16], const uint8_t arg[16])
 {
   for (int i = 0; i < 16; i++)
   {
@@ -101,15 +103,15 @@ void op_s(uint8_t out[16], const uint8_t arg[16])
   }
 }
 /* out = S_inv(arg) = pi_inv_i(arg) (i = 0, 15)*/
-static void op_s_inv(uint8_t out[16], const uint8_t arg[16])
+static void op_S_inv(uint8_t out[16], const uint8_t arg[16])
 {
   for (int i = 0; i < 16; i++)
   {
     out[i] = pi_inv[arg[i]];
   }
 }
-/* l(a_15,..,a_0) = sum((ki * a15-i) mod p(x))*/
-static void op_linear(uint8_t *out, const uint8_t arg[16])
+/* l(a_15,..,a_0) = sum((k_i * a_15-i) mod p(x))*/
+static void op_l(uint8_t *out, const uint8_t arg[16])
 {
   *out = 0;
   uint8_t koefs[16] = {
@@ -120,16 +122,17 @@ static void op_linear(uint8_t *out, const uint8_t arg[16])
   for (int i = 0; i < 16; i++)
   {
     uint16_t res_mul = 0;
+    /* (k_i * a_15-i) mod p(x) */
     gf_2x_px_mul(&res_mul, koefs[i], arg[15 - i]);
+    /* Накопление суммы */
     (*out) ^= (uint8_t)res_mul;
   }
 }
-/* Сдвиг вправо аргумента и запись L(a) в старший байт */
-static void op_r(uint8_t out[16], const uint8_t arg[16])
+/* Сдвиг вправо аргумента и запись l(a) в старший байт */
+static void op_R(uint8_t out[16], const uint8_t arg[16])
 {
-
   uint8_t tmp;
-  op_linear(&tmp, arg);
+  op_l(&tmp, arg);
   for (int i = 0; i < 15; i++)
   {
     out[i] = arg[i + 1];
@@ -137,15 +140,15 @@ static void op_r(uint8_t out[16], const uint8_t arg[16])
   out[15] = tmp;
 }
 /* Выполнение операции R 16 раз над самим собой */
-static void op_l(uint8_t out[16], const uint8_t arg[16])
+static void op_L(uint8_t out[16], const uint8_t arg[16])
 {
   /* Первую итерацию надо провести с внешним
    * аргументом, а остальные 15 проводятся сами
    * над собой в цикле */
-  op_r(out, arg);
+  op_R(out, arg);
   for (int i = 1; i < 16; i++)
   {
-    op_r(out, out);
+    op_R(out, out);
   }
 }
 /* Обратная R операция */
@@ -159,17 +162,18 @@ static void op_r_inv(uint8_t out[16], const uint8_t arg[16])
     arg_mod[i] = arg[i - 1];
   }
   uint8_t tmp;
-  op_linear(&tmp, arg_mod);
+  op_l(&tmp, arg_mod);
   arg_mod[0] = tmp;
   memcpy(out, arg_mod, 16);
 }
 
 /* Обратная L операция */
-static void op_l_inv(uint8_t out[16], const uint8_t arg[16])
+static void op_L_inv(uint8_t out[16], const uint8_t arg[16])
 {
   op_r_inv(out, arg);
   for (int i = 1; i < 16; i++)
   {
+    /* Копия для передачи в r_inv разных переменных */
     uint8_t out_cpy[16];
     op_r_inv(out_cpy, out);
     memcpy(out, out_cpy, 16);
@@ -178,16 +182,16 @@ static void op_l_inv(uint8_t out[16], const uint8_t arg[16])
 /* Композция функций LSX[mod](a) = L(S(X[mod](a))) */
 static void op_LSX(uint8_t arg_1[16], const uint8_t module[16])
 {
-  op_x(arg_1, arg_1, module);
-  op_s(arg_1, arg_1);
-  op_l(arg_1, arg_1);
+  op_X(arg_1, arg_1, module);
+  op_S(arg_1, arg_1);
+  op_L(arg_1, arg_1);
 }
 /* Композция функций S^(-1)L^(-1)X[mod](a). Обратна LSX */
 static void op_LSX_inv(uint8_t arg_1[16], const uint8_t module[16])
 {
-  op_x(arg_1, arg_1, module);
-  op_l_inv(arg_1, arg_1);
-  op_s_inv(arg_1, arg_1);
+  op_X(arg_1, arg_1, module);
+  op_L_inv(arg_1, arg_1);
+  op_S_inv(arg_1, arg_1);
 }
 
 /* F[mod](a2, a1) = {LSX(a2)^a1, a2} */
@@ -216,8 +220,11 @@ static void itob(uint8_t out[16], uint8_t val)
 static void do_keygen(kuz_key_t *key, const uint8_t raw[32])
 {
   memcpy(key->k, raw, 32);
+  /* Первый ключ является старшей половиной основного ключа K */
   memcpy((key->k_arr)[0], (key->k) + 16, 16);
+  /* Второй ключ является младшей половиной основного ключа K */
   memcpy((key->k_arr)[1], key->k, 16);
+  /* Остальные пары ключей вычисляются на основе предыдущих */
   for (int i = 0; i < 4; i++)
   {
     uint8_t k_1_new[16];
@@ -229,7 +236,7 @@ static void do_keygen(kuz_key_t *key, const uint8_t raw[32])
       uint8_t c = 8 * i + j + 1;
       uint8_t c_blk[16];
       itob(c_blk, c);
-      op_l(c_blk, c_blk);
+      op_L(c_blk, c_blk);
       op_f(k_1_new, k_2_new, c_blk);
     }
     memcpy((key->k_arr)[2 * i + 2], k_1_new, 16);
@@ -262,7 +269,7 @@ int kuz_encrypt(uint8_t block[16], const kuz_key_t *key)
   {
     op_LSX(block, key->k_arr[i]);
   }
-  op_x(block, block, key->k_arr[9]);
+  op_X(block, block, key->k_arr[9]);
   return 0;
 }
 
@@ -272,6 +279,77 @@ int kuz_decrypt(uint8_t block[16], const kuz_key_t *key)
   {
     op_LSX_inv(block, key->k_arr[i]);
   }
-  op_x(block, block, key->k_arr[0]);
+  op_X(block, block, key->k_arr[0]);
   return 0;
+}
+
+int bignum_kuz_encrypt(bignum_t *res, const bignum_t *block, const kuz_key_t *key)
+{
+  if (!res || !block || !key)
+  {
+    return -ERR_NULLPTR;
+  }
+  size_t byte_len = block->length * sizeof(uint32_t);
+  /* Сообщение, не кратные 16 байтам, пока не пропускаются */
+  if (byte_len == 0 || byte_len % 16 != 0)
+  {
+    return -ERR_INVALID_SIZE;
+  }
+  uint8_t *bytes = malloc(byte_len);
+  if (!bytes)
+  {
+    return -ERR_MALLOC_FAILED;
+  }
+  /* Переводим bignum_t в uint8_t* для удобного шифрования */
+  bignum_to_ui8_array(bytes, byte_len, block);
+  /* Шифруем каждый блок по 16 байт */
+  for (size_t i = 0; i < byte_len; i += 16)
+  {
+
+    int err = kuz_encrypt(bytes + i, key);
+    if (err < 0)
+    {
+      free(bytes);
+      return err;
+    }
+  }
+  /* Помещаем зашифрованный массив обратно в bignum_t */
+  int err = bignum_from_ui8_array(res, bytes, byte_len, false);
+  free(bytes);
+  return err;
+}
+
+int bignum_kuz_decrypt(bignum_t *res, const bignum_t *block, const kuz_key_t *key)
+{
+  if (!res || !block || !key)
+  {
+    return -ERR_NULLPTR;
+  }
+  size_t byte_len = block->length * sizeof(uint32_t);
+  /* Сообщение, не кратные 16 байтам, пока не пропускаются */
+  if (byte_len == 0 || byte_len % 16 != 0)
+  {
+    return -ERR_INVALID_SIZE;
+  }
+  uint8_t *bytes = malloc(byte_len);
+  if (!bytes)
+  {
+    return -ERR_MALLOC_FAILED;
+  }
+  /* Переводим bignum_t в uint8_t* для удобной расшифровки */
+  bignum_to_ui8_array(bytes, byte_len, block);
+  /* Расшифруем каждый блок по 16 байт */
+  for (size_t i = 0; i < byte_len; i += 16)
+  {
+    int err = kuz_decrypt(bytes + i, key);
+    if (err < 0)
+    {
+      free(bytes);
+      return err;
+    }
+  }
+  /* Помещаем расшифрованный массив обратно в bignum_t */
+  int err = bignum_from_ui8_array(res, bytes, byte_len, false);
+  free(bytes);
+  return err;
 }
