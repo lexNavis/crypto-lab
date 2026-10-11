@@ -1,18 +1,83 @@
 {
   "run": "all",
-
   "rsa": {
-    "bits": 1024,
+    "bits": 32768,
     "from_file": true,
     "message": "12345"
   },
-
   "kuznyechik": {
     "use_random_key": false,
     "block": "00112233445566778899aabbccddeeff"
   },
-
   "streebog": {
     "message": "48656c6c6f2c20776f726c6421"
+  },
+  "bignum": {
+    "operations": [
+      {
+        "op": "add",
+        "a": "30",
+        "b": "12",
+        "neg_a": false,
+        "neg_b": false
+      },
+      {
+        "op": "sub",
+        "a": "30",
+        "b": "12",
+        "neg_a": false,
+        "neg_b": false
+      },
+      {
+        "op": "mul",
+        "a": "1234567890abcdef",
+        "b": "fedcba0987654321",
+        "neg_a": false,
+        "neg_b": false
+      },
+      {
+        "op": "divmod",
+        "a": "1234567890abcdef1234567890abcdef",
+        "b": "1234567890abcdef",
+        "neg_a": false,
+        "neg_b": false
+      },
+      {
+        "op": "pow",
+        "a": "2",
+        "b": "a",
+        "neg_a": false,
+        "neg_b": false
+      },
+      {
+        "op": "pow_mod",
+        "a": "5",
+        "b": "3",
+        "mod": "d",
+        "neg_a": false,
+        "neg_b": false
+      },
+      {
+        "op": "gcd",
+        "a": "30",
+        "b": "12",
+        "neg_a": false,
+        "neg_b": false
+      },
+      {
+        "op": "lcm",
+        "a": "4",
+        "b": "6",
+        "neg_a": false,
+        "neg_b": false
+      },
+      {
+        "op": "cmp",
+        "a": "30",
+        "b": "12",
+        "neg_a": false,
+        "neg_b": false
+      }
+    ]
   }
 }
