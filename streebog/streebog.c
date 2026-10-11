@@ -384,25 +384,24 @@ int streebog_make_hash(uint8_t out[64], const uint8_t *M, size_t len)
 int bignum_streebog_hash(bignum_t *res, const bignum_t *msg)
 {
   if (!res || !msg)
-  {
     return -ERR_NULLPTR;
-  }
-  /* Конвертируем сообщение в байты */
-  size_t byte_len = msg->length * sizeof(uint32_t);
-  uint8_t *bytes = malloc(byte_len);
+
+  /* Максимально возможная длина в байтах: 4 * length. */
+  size_t max_len = msg->length * sizeof(uint32_t);
+  uint8_t *bytes = malloc(max_len);
   if (!bytes)
-  {
     return -ERR_MALLOC_FAILED;
+  long total = bignum_to_ui8_array(bytes, max_len, msg);
+  if (total < 0)
+  {
+    free(bytes);
+    return (int)total;
   }
-  bignum_to_ui8_array(bytes, byte_len, msg);
-  /* Считаем хэш */
   uint8_t hash[64];
-  int err = streebog_make_hash(hash, bytes, byte_len);
+  int err = streebog_make_hash(hash, bytes, (size_t)total * 8);
   free(bytes);
   if (err < 0)
-  {
     return err;
-  }
-  /* Конвертируем хэш обратно в bignum */
+
   return bignum_from_ui8_array(res, hash, 64, false);
 }
