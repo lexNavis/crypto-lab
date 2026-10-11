@@ -42,7 +42,7 @@ static void bignum_normalize(bignum_t *val)
   }
 }
 
-/* Возвращает численное значение hex символа, если 
+/* Возвращает численное значение hex символа, если
  * таковое имеется */
 static int hexval(const char chr)
 {
@@ -72,7 +72,7 @@ static int bignum_push(bignum_t *dest, uint32_t val)
   dest->length++;
   return 0;
 }
-/* Беззнаковое сравнение двух чисел: 1 - первое число больше, 
+/* Беззнаковое сравнение двух чисел: 1 - первое число больше,
  * -1 - второе число больше, 0 - равенство чисел */
 static int bignum_cmp_abs(const bignum_t *val_1, const bignum_t *val_2)
 {
@@ -153,7 +153,7 @@ static int bignum_add_abs(bignum_t *res, const bignum_t *val_1, const bignum_t *
   bignum_delete(&res_copy);
   return 0;
 }
-/* Беззнаковое вычитание чисел с записью результата в res. 
+/* Беззнаковое вычитание чисел с записью результата в res.
  * |a| >= |b| - должно гарантироваться для положительного результата
  * и корректного вычитания */
 static int bignum_sub_abs(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2)
@@ -363,6 +363,20 @@ static int bignum_leading_zeros(uint32_t x)
   return __builtin_clz(x);
 }
 
+/* Получение номера старшего значащего разряда(размером bits) в word */
+static size_t bignum_top_digit(uint32_t word, size_t bits)
+{
+  size_t count = 32 / bits; /* сколько разрядов в слове */
+  for (size_t i = count; i > 0; i--)
+  {
+    if ((word >> ((i - 1) * bits)) & ((1u << bits) - 1))
+    {
+      return i - 1;
+    }
+  }
+  return 0;
+}
+
 void bignum_init(bignum_t *val)
 {
   val->capacity = 0;
@@ -413,56 +427,62 @@ void bignum_print(const bignum_t *val)
   printf("\n");
 }
 
-void bignum_print_dec(const bignum_t *val) {
-    if (bignum_is_zero(val)) {
-        printf("0\n");
-        return;
+void bignum_print_dec(const bignum_t *val)
+{
+  if (bignum_is_zero(val))
+  {
+    printf("0");
+    return;
+  }
+  if (val->negative)
+  {
+    printf("-");
+  }
+  /* Копия, потому что будем делить. */
+  bignum_t tmp;
+  bignum_init(&tmp);
+  bignum_copy(&tmp, val);
+  tmp.negative = false;
+
+  /* Собираем остатки от деления на 10^9. */
+  uint32_t base = 1000000000;
+  uint32_t *parts = NULL;
+  size_t count = 0;
+  size_t cap = 0;
+
+  bignum_t divisor, rem;
+  bignum_init(&divisor);
+  bignum_init(&rem);
+  bignum_from_ui32_array(&divisor, &base, 1, false);
+
+  while (!bignum_is_zero(&tmp))
+  {
+    bignum_mod(&rem, &tmp, &divisor);
+    bignum_div(&tmp, &tmp, &divisor);
+    /* rem < 10^9, значит rem->val[0] содержит остаток. */
+    if (count == cap)
+    {
+      cap = cap ? cap * 2 : 4;
+      parts = realloc(parts, cap * sizeof(uint32_t));
     }
-    if (val->negative) {
-        printf("-");
-    }
-    /* Копия, потому что будем делить. */
-    bignum_t tmp;
-    bignum_init(&tmp);
-    bignum_copy(&tmp, val);
-    tmp.negative = false;
+    parts[count++] = rem.val[0];
+  }
 
-    /* Собираем остатки от деления на 10^9. */
-    uint32_t base = 1000000000;
-    uint32_t *parts = NULL;
-    size_t count = 0;
-    size_t cap = 0;
+  /* Печатаем старшую часть без ведущих нулей, остальные — с ведущими. */
+  printf("%u", parts[count - 1]);
+  for (size_t i = count - 1; i > 0; i--)
+  {
+    printf("%09u", parts[i - 1]);
+  }
 
-    bignum_t divisor, rem;
-    bignum_init(&divisor);
-    bignum_init(&rem);
-    bignum_from_ui32_array(&divisor, &base, 1, false);
-
-    while (!bignum_is_zero(&tmp)) {
-        bignum_mod(&rem, &tmp, &divisor);
-        bignum_div(&tmp, &tmp, &divisor);
-        /* rem < 10^9, значит rem->val[0] содержит остаток. */
-        if (count == cap) {
-            cap = cap ? cap * 2 : 4;
-            parts = realloc(parts, cap * sizeof(uint32_t));
-        }
-        parts[count++] = rem.val[0];
-    }
-
-    /* Печатаем старшую часть без ведущих нулей, остальные — с ведущими. */
-    printf("%u", parts[count - 1]);
-    for (size_t i = count - 1; i > 0; i--) {
-        printf("%09u", parts[i - 1]);
-    }
-    printf("\n");
-
-    free(parts);
-    bignum_delete(&tmp);
-    bignum_delete(&divisor);
-    bignum_delete(&rem);
+  free(parts);
+  bignum_delete(&tmp);
+  bignum_delete(&divisor);
+  bignum_delete(&rem);
 }
 
-int bignum_from_ui8_array(bignum_t *dest, const uint8_t *src, size_t size, bool neg) {
+int bignum_from_ui8_array(bignum_t *dest, const uint8_t *src, size_t size, bool neg)
+{
   int err;
   if (!dest || !src)
   {
@@ -478,21 +498,22 @@ int bignum_from_ui8_array(bignum_t *dest, const uint8_t *src, size_t size, bool 
   {
     return err;
   }
-  for (size_t i = 0; i < word_count; i++) {
-     /* Так как word_count округлен до большего числа,
-      * то максимальный элемент в src может быть на отрезке
-      * [4*i, 4*i+3] в зависимости от округления. Для предотвращения
-      * segfault вводятся проверки для каждого разряда */
-      uint32_t b0 = (4*i     < size) ? src[4*i]     : 0;
-      uint32_t b1 = (4*i + 1 < size) ? src[4*i + 1] : 0;
-      uint32_t b2 = (4*i + 2 < size) ? src[4*i + 2] : 0;
-      uint32_t b3 = (4*i + 3 < size) ? src[4*i + 3] : 0;
-      dest->val[i] = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+  for (size_t i = 0; i < word_count; i++)
+  {
+    /* Так как word_count округлен до большего числа,
+     * то максимальный элемент в src может быть на отрезке
+     * [4*i, 4*i+3] в зависимости от округления. Для предотвращения
+     * segfault вводятся проверки для каждого разряда */
+    uint32_t b0 = (4 * i < size) ? src[4 * i] : 0;
+    uint32_t b1 = (4 * i + 1 < size) ? src[4 * i + 1] : 0;
+    uint32_t b2 = (4 * i + 2 < size) ? src[4 * i + 2] : 0;
+    uint32_t b3 = (4 * i + 3 < size) ? src[4 * i + 3] : 0;
+    dest->val[i] = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
   }
   dest->negative = neg;
   dest->length = word_count;
   bignum_normalize(dest);
-  return 0; 
+  return 0;
 }
 
 int bignum_from_ui32_array(bignum_t *dest, const uint32_t *src, size_t size, bool neg)
@@ -605,17 +626,34 @@ long bignum_to_ui8_array(uint8_t *dest, size_t dest_size, const bignum_t *src)
   {
     return -ERR_NULLPTR;
   }
-  if (dest_size < src->length * 4)
+
+  if (src->length == 0)
+  {
+    if (dest_size < 1)
+      return -ERR_INVALID_SIZE;
+    dest[0] = 0;
+    return 1;
+  }
+
+  size_t last_word = src->length - 1; // после normalize старшее слово ненулевое
+  uint32_t top = src->val[last_word];
+  /* Определим точное число байт, которое необходимо записать.
+   * Для этого определим, сколько значащих байт есть в последнем разряде
+   * Точное число байт определяется как число полностью заполненных разрядов
+   * + число значащих байт в последнем разряде */
+  size_t last_byte = bignum_top_digit(top, 8);
+  size_t total = last_word * 4 + last_byte + 1;
+
+  if (dest_size < total)
   {
     return -ERR_INVALID_SIZE;
   }
-  for (size_t i = 0; i < src->length; i++) {
-    dest[4 * i] = src->val[i] & 0xFF;
-    dest[4 * i + 1] = (src->val[i] >> 8) & 0xFF;
-    dest[4 * i + 2] = (src->val[i] >> 16) & 0xFF;
-    dest[4 * i + 3] = (src->val[i] >> 24) & 0xFF;
+
+  for (size_t i = 0; i < total; i++)
+  {
+    dest[i] = (src->val[i / 4] >> ((i % 4) * 8)) & 0xFF;
   }
-  return (long)src->length * 4;
+  return total;
 }
 
 long bignum_to_ui32_array(uint32_t *dest, size_t dest_size, const bignum_t *src)
@@ -623,6 +661,14 @@ long bignum_to_ui32_array(uint32_t *dest, size_t dest_size, const bignum_t *src)
   if (!dest || !src)
   {
     return -ERR_NULLPTR;
+  }
+
+  if (src->length == 0)
+  {
+    if (dest_size < 1)
+      return -ERR_INVALID_SIZE;
+    dest[0] = 0;
+    return 1;
   }
   if (dest_size < src->length)
   {
@@ -635,21 +681,36 @@ long bignum_to_ui32_array(uint32_t *dest, size_t dest_size, const bignum_t *src)
 long bignum_to_hex_string(char *dest, size_t dest_size, const bignum_t *src)
 {
   if (!dest || !src)
-  {
     return -ERR_NULLPTR;
-  }
-  /* Проверка, влезет ли в строку указанное число ячеек
-   * по 4 байта (8 символов) + терминальный ноль */
-  if (dest_size < src->length * 8 + 1)
+
+  if (src->length == 0)
   {
+    if (dest_size < 2)
+      return -ERR_INVALID_SIZE;
+    dest[0] = '0';
+    dest[1] = '\0';
+    return 1;
+  }
+
+  size_t last_word = src->length - 1;
+  uint32_t top = src->val[last_word];
+  /* Число разрядов на 1 больше номера старшего разряда в числе */
+  size_t top_nibble = bignum_top_digit(top, 4) + 1;
+  /* Длину считаем с учетом нуль-терминатора */
+  size_t len = last_word * 8 + top_nibble + 1;
+  if (dest_size < len)
     return -ERR_INVALID_SIZE;
-  }
-  for (size_t i = src->length; i > 0; i--)
+
+  size_t off = 0;
+  /* Старшее слово — без ведущих нулей. */
+  off += snprintf(dest + off, dest_size - off, "%x", src->val[last_word]);
+  /* Остальные — с ведущими нулями. */
+  for (size_t i = last_word; i > 0; i--)
   {
-    snprintf(dest + (src->length - i) * 8, 9, "%08x", src->val[i - 1]);
+    off += snprintf(dest + off, dest_size - off, "%08x", src->val[i - 1]);
   }
-  dest[src->length * 8] = '\0';
-  return (long)strlen(dest);
+  dest[off] = '\0';
+  return (long)off;
 }
 
 void bignum_to_gmp(mpz_t dest, const bignum_t *src)
@@ -932,7 +993,7 @@ int bignum_divmod(bignum_t *quot, bignum_t *rem, const bignum_t *val_1, const bi
   }
 
   size_t dr_len = b.length; // divisor
-  /* Окно алгоритма — n+1 слов, где n = dr_len (число разрядов делителя). 
+  /* Окно алгоритма — n+1 слов, где n = dr_len (число разрядов делителя).
    * Поэтому последняя позиция окна: m = length(a) - n - 1. */
   size_t m = a.length - b.length - 1;
   err = bignum_ensure_capacity(quot, m + 1);
@@ -1114,7 +1175,7 @@ int bignum_pow_mod(bignum_t *res, const bignum_t *base, const bignum_t *exp, con
   {
     goto delete_all;
   }
-  /* Цикл по разрядам степени. Продолжаем, пока остались 
+  /* Цикл по разрядам степени. Продолжаем, пока остались
    * необраюотанные разряды */
   while (bignum_cmp_abs(&exp_copy, &zero) == 1)
   {
@@ -1257,11 +1318,11 @@ int bignum_gcd(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2)
   {
     goto delete_all;
   }
-  /* Реализуется алгоритм Евклида: 
+  /* Реализуется алгоритм Евклида:
    * r = a mod b
    * a = b
    * b = r
-   * Если b = 0, то a содержит НОД 
+   * Если b = 0, то a содержит НОД
    */
   while (!bignum_is_zero(&b))
   {
