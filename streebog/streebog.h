@@ -21,7 +21,9 @@ int streebog_make_hash(uint8_t out[64], const uint8_t *M, size_t len);
  * @param res Результат выполнения хэширования
  * @param msg Исходное сообщение
  * @returns 0 В случае успеха, отрицательное значение - ошибка
- * @note Не работает, есть проблемы с преобразованием в uint8_t
+ * @note Обрезает ведущие нули числа, поэтому использовать эту функцию необходимо
+ * только для работы с числами. Для работы с потоком байт использовать streebog_make_hash
+ * напрямую
  */
 int bignum_streebog_hash(bignum_t *res, const bignum_t *msg);
 /**
