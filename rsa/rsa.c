@@ -196,3 +196,119 @@ int rsa_decrypt(const mpz_t val, mpz_t decrypted_val, const rsa_key_t *key) {
   mpz_powm(decrypted_val, val, key->d, key->n);
   return 0;
 }
+
+/* ===== BigNum RSA (дублирующая реализация для проверки BigNum) ===== */
+
+void rsa_key_bignum_init(rsa_key_bignum_t *key)
+{
+  bignum_init(&key->n);
+  bignum_init(&key->e);
+  bignum_init(&key->d);
+}
+
+void rsa_key_bignum_clear(rsa_key_bignum_t *key)
+{
+  bignum_delete(&key->n);
+  bignum_delete(&key->e);
+  bignum_delete(&key->d);
+}
+
+/* Читает p и q из файла p_{bits/2}.txt (десятичный формат) в bignum_t.
+ * GMP используется только для чтения (mpz_inp_str), арифметика — на BigNum. */
+static int read_primes_bignum(bignum_t *p, bignum_t *q, unsigned int bits)
+{
+  char path_buf[256];
+  int path_err = path_to_prime(path_buf, sizeof(path_buf), bits / 2);
+  if (path_err < 0)
+    return path_err;
+
+  FILE *f = fopen(path_buf, "r");
+  if (!f)
+    return -ERR_FILE_NOT_FOUND;
+
+  mpz_t p_mpz, q_mpz;
+  mpz_init(p_mpz);
+  mpz_init(q_mpz);
+
+  int err = 0;
+  if (mpz_inp_str(p_mpz, f, 10) == 0) { err = -ERR_READ_FROM_FILE_FAILED; goto cleanup; }
+  if (mpz_inp_str(q_mpz, f, 10) == 0) { err = -ERR_READ_FROM_FILE_FAILED; goto cleanup; }
+
+  err = bignum_from_gmp(p, p_mpz);
+  if (err < 0) goto cleanup;
+  err = bignum_from_gmp(q, q_mpz);
+  if (err < 0) goto cleanup;
+
+cleanup:
+  mpz_clear(p_mpz);
+  mpz_clear(q_mpz);
+  fclose(f);
+  return err;
+}
+
+int rsa_keygen_bignum(rsa_key_bignum_t *key, unsigned int bits, bool from_file)
+{
+  if (!key || bits < 16)
+    return -ERR_RSA_SIZE_TOO_SMALL;
+  if (!from_file)
+    return -ERR_INVALID_PARAM;  /* BigNum-версия только с from_file */
+
+  bignum_t p, q, phi, p_minus_1, q_minus_1;
+  bignum_init(&p);
+  bignum_init(&q);
+  bignum_init(&phi);
+  bignum_init(&p_minus_1);
+  bignum_init(&q_minus_1);
+
+  int err = read_primes_bignum(&p, &q, bits);
+  if (err < 0) goto cleanup;
+
+  if (bignum_cmp(&p, &q) == 0) { err = -ERR_EQUAL_PRIMES; goto cleanup; }
+
+  rsa_key_bignum_init(key);
+  /* n = p * q */
+  err = bignum_mul(&key->n, &p, &q);
+  if (err < 0) goto cleanup_key;
+
+  /* phi = (p-1)(q-1) */
+  err = bignum_sub_digit(&p_minus_1, &p, 1);
+  if (err < 0) goto cleanup_key;
+  err = bignum_sub_digit(&q_minus_1, &q, 1);
+  if (err < 0) goto cleanup_key;
+  err = bignum_mul(&phi, &p_minus_1, &q_minus_1);
+  if (err < 0) goto cleanup_key;
+
+  /* e = 65537 */
+  err = bignum_from_ui32_array(&key->e, (uint32_t[]){65537}, 1, false);
+  if (err < 0) goto cleanup_key;
+
+  /* d = e^(-1) mod phi */
+  err = bignum_modinv(&key->d, &key->e, &phi);
+  if (err < 0) goto cleanup_key;
+
+  err = 0;
+  goto cleanup;
+
+cleanup_key:
+  rsa_key_bignum_clear(key);
+cleanup:
+  bignum_delete(&p);
+  bignum_delete(&q);
+  bignum_delete(&phi);
+  bignum_delete(&p_minus_1);
+  bignum_delete(&q_minus_1);
+  return err;
+}
+
+int rsa_encrypt_bignum(const bignum_t *val, bignum_t *encrypted_val, const rsa_key_bignum_t *key)
+{
+  if (!val || !encrypted_val || !key) return -ERR_NULLPTR;
+  if (bignum_cmp(val, &key->n) != -1) return -ERR_MSG_TOO_BIG;
+  return bignum_pow_mod(encrypted_val, val, &key->e, &key->n);
+}
+
+int rsa_decrypt_bignum(const bignum_t *val, bignum_t *decrypted_val, const rsa_key_bignum_t *key)
+{
+  if (!val || !decrypted_val || !key) return -ERR_NULLPTR;
+  return bignum_pow_mod(decrypted_val, val, &key->d, &key->n);
+}

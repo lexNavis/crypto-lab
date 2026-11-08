@@ -2,6 +2,7 @@
 #define RSA_H
 #include <gmp.h>
 #include <stdbool.h>
+#include "../bignum/bignum.h"
 
 enum RSA_ERRORS {
   ERR_SNPRINTF_FAILED = 1,
@@ -21,6 +22,22 @@ typedef struct
   mpz_t e; /* Public exp = 65537 by default */
   mpz_t d; /* Secret exp = e^(-1) mod (fi(n)) */
 } rsa_key_t;
+/**
+ * @struct RSA-ключ на BigNum (дублирующая реализация для проверки BigNum).
+ */
+typedef struct
+{
+  bignum_t n;
+  bignum_t e;
+  bignum_t d;
+} rsa_key_bignum_t;
+
+void rsa_key_bignum_init(rsa_key_bignum_t *key);
+void rsa_key_bignum_clear(rsa_key_bignum_t *key);
+
+int rsa_keygen_bignum(rsa_key_bignum_t *key, unsigned int bits, bool from_file);
+int rsa_encrypt_bignum(const bignum_t *val, bignum_t *encrypted_val, const rsa_key_bignum_t *key);
+int rsa_decrypt_bignum(const bignum_t *val, bignum_t *decrypted_val, const rsa_key_bignum_t *key);
 /**
  * @brief Первичная инициализация rsa_key_t
  * @param [key] Переменная rsa_key_t
