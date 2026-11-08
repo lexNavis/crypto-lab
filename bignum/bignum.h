@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <gmp.h>
+#include "../common/entropy.h"
 
 enum BIGNUM_ERRORS {
   ERR_REALLOC_FAILED = 1,
@@ -11,7 +12,9 @@ enum BIGNUM_ERRORS {
   ERR_INVALID_SIZE,
   ERR_INVALID_STRING,
   ERR_DIVISION_BY_ZERO,
-  
+  ERR_INVALID_PARAM,
+  ERR_INIT,
+  ERR_TOO_MUCH_MEMORY
 };
 
 /**
@@ -35,7 +38,6 @@ typedef struct bignum_t
  * @note Память под цифры не выделяется. Первое выделение произойдёт
  * при первой записи (from_*, add, mul и т.д.).
  */
-void bignum_init(bignum_t *val);
 void bignum_init(bignum_t *val);
 /**
  * @brief Освобождает память занятую числом bignum_t
@@ -109,6 +111,24 @@ int bignum_from_hex_string(bignum_t *dest, const char *hex, bool neg);
  * из enum BIGNUM_ERRORS в случае ошибки 
  */
 int bignum_from_gmp(bignum_t *dest, const mpz_t src);
+/**
+ * @brief Генерация случайного большого числа заданного размера
+ * 
+ * @param res   Большое число
+ * @param bits  Размер в битах
+ * @return 0 в случае успеха, отрицательное значение 
+ * из enum BIGNUM_ERRORS в случае ошибки
+ */
+int bignum_rand(bignum_t *res, size_t bits);
+/**
+ * @brief Генерация случайного большого числа [0 ; max - 1]
+ * 
+ * @param res Большое число
+ * @param max Верхняя граница
+ * @return 0 в случае успеха, отрицательное значение 
+ * в случае ошибки
+ */
+int bignum_rand_range(bignum_t *res, const bignum_t *max);
 
 /* --------------------Функции экспорта-------------------- */
 
@@ -180,8 +200,42 @@ bool bignum_is_zero(const bignum_t *val);
  * @return Является ли число четным или нет
  */
 bool bignum_is_even(const bignum_t *val);
+/**
+ * @brief Проверяет знак числа
+ * 
+ * @param val Число типа bignum_t
+ * @return Является ли число отрицательным или нет
+ */
+bool bignum_is_negative(const bignum_t *val);
+/**
+ * @brief Устанавливает знак числа
+ * 
+ * @param val Число типа bignum_t
+ * @param negative Знак
+ */
+void bignum_set_negative(bignum_t *val, bool negative);
+/**
+ * @brief 
+ * 
+ * @param val 
+ * @param pos 
+ * @return true 
+ * @return false 
+ */
+bool bignum_bit(const bignum_t *val, size_t pos);
 
 /* --------------------Арифметические операции и математические функции-------------------- */
+
+/* Обнуление числа val */
+int bignum_set_zero(bignum_t *val);
+/* Сдвиг влево на n разрядов */
+int bignum_shift_left(bignum_t *a, size_t n);
+/* Сдвиг вправо на n разрядов */
+void bignum_shift_right(bignum_t *a, size_t n);
+/* Сдвиг влево на n бит */
+int bignum_shift_left_bits(bignum_t *a, size_t n);
+/* Сдвиг вправо на n бит */
+void bignum_shift_right_bits(bignum_t *a, size_t n);
 
 /**
  * @brief Знаковое сравнение двух чисел
@@ -203,6 +257,16 @@ int bignum_cmp(const bignum_t *val_1, const bignum_t *val_2);
  */
 int bignum_add(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2);
 /**
+ * @brief Беззнаковое сложение лимба и большого числа
+ * 
+ * @param res   Результат вычитания 
+ * @param val   Первое число
+ * @param digit Лимб
+ * @return 0 в случае успеха, отрицательное значение 
+ * из enum BIGNUM_ERRORS в случае ошибки 
+ */
+int bignum_add_digit(bignum_t *res, const bignum_t *val, uint32_t digit);
+/**
  * @brief Знаковое вычитание двух чисел
  * 
  * @param res   Результат вычитания 
@@ -212,6 +276,26 @@ int bignum_add(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2);
  * из enum BIGNUM_ERRORS в случае ошибки 
  */
 int bignum_sub(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2);
+/**
+ * @brief Беззнаковое вычитание лимба из большого числа
+ * 
+ * @param res   Результат вычитания 
+ * @param val   Первое число
+ * @param digit Лимб
+ * @return 0 в случае успеха, отрицательное значение 
+ * из enum BIGNUM_ERRORS в случае ошибки 
+ */
+int bignum_sub_digit(bignum_t *res, const bignum_t *val, uint32_t digit);
+/**
+ * @brief Беззнаковое умножение большого числа на один разряд (лимб)
+ * 
+ * @param res   Результат умножения
+ * @param val   Первое число
+ * @param digit Лимб
+ * @return 0 в случае успеха, отрицательное значение 
+ * из enum BIGNUM_ERRORS в случае ошибки 
+ */
+int bignum_mul_digit(bignum_t *res, const bignum_t *val, uint32_t digit);
 /**
  * @brief Знаковое умножение двух чисел
  * 
@@ -275,6 +359,15 @@ int bignum_pow_mod(bignum_t *res, const bignum_t *base, const bignum_t *exp, con
  */
 int bignum_pow(bignum_t *res, const bignum_t *base, const bignum_t *exp);
 /**
+ * @brief Взятие квадратного корня числа
+ * 
+ * @param res  Результат взятия корня
+ * @param val  Аргумент
+ * @return 0 в случае успеха, отрицательное значение 
+ * из enum BIGNUM_ERRORS в случае ошибки 
+ */
+int bignum_sqrt(bignum_t *res, const bignum_t *val);
+/**
  * @brief Нахождение НОД двух чисел
  * 
  * @param res   НОД
@@ -294,3 +387,13 @@ int bignum_gcd(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2);
  * из enum BIGNUM_ERRORS в случае ошибки 
  */
 int bignum_lcm(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2);
+
+/**
+ * @brief Остаток от деления числа на 32-битный делитель
+ * @param res Результат
+ * @param val Число
+ * @param divisor Делитель (не ноль)
+ * @return 0 в случае успеха, отрицательное значение 
+ * из enum BIGNUM_ERRORS в случае ошибки 
+ */
+int bignum_mod_ui32(uint32_t *res, const bignum_t *val, uint32_t divisor);
