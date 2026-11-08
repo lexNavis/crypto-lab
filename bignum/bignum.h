@@ -171,7 +171,13 @@ long bignum_to_hex_string(char *dest, size_t dest_size, const bignum_t *src);
 void bignum_to_gmp(mpz_t dest, const bignum_t *src);
 
 /* --------------------Служебные функции-------------------- */
-
+/**
+ * @brief Возвращает длину числа в битах (без ведущих нулей).
+ *
+ * @param val Число типа bignum_t
+ * @return Длина в битах (0 для нуля)
+ */
+size_t bignum_bit_length(const bignum_t *val);
 /**
  * @brief Возвращает текущую разрядность числа
  * 
@@ -337,6 +343,20 @@ int bignum_div(bignum_t *quot, const bignum_t *val_1, const bignum_t *val_2);
  * из enum BIGNUM_ERRORS в случае ошибки 
  */
 int bignum_mod(bignum_t *rem, const bignum_t *val_1, const bignum_t *val_2);
+/**
+ * @brief Находит обратный элемент a^(-1) mod m.
+ *
+ * Использует расширенный алгоритм Евклида.
+ * Результат всегда в [0, m-1] (неотрицательный остаток).
+ *
+ * @param[out] res Результат: a^(-1) mod m (если существует)
+ * @param[in]  a   Число, для которого ищется обратный элемент
+ * @param[in]  m   Модуль (m > 1)
+ * @return 0 в случае успеха, -ERR_INVALID_PARAM если gcd(a, m) != 1
+ *         (обратного элемента нет), отрицательное значение из
+ *         enum BIGNUM_ERRORS при других ошибках
+ */
+int bignum_modinv(bignum_t *res, const bignum_t *a, const bignum_t *m);
 /**
  * @brief Возведение в степень по модулю
  * 
