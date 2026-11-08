@@ -13,10 +13,10 @@ SRCS     = main.c \
            rsa/prime.c rsa/rsa.c \
            streebog/streebog.c \
            tests/test_kuz.c tests/args.c tests/test_rsa.c tests/test_streebog.c tests/test_bignum.c \
-           tests/test_mersen.c tests/test_primality.c \
+           tests/test_mersen.c tests/test_primality.c tests/test_poly.c\
            bignum/bignum.c \
            mersen/mersen.c \
-           primality/primality.c
+           primality/primality.c primality/poly.c 
 
 OBJS     = $(SRCS:%.c=$(OBJDIR)/%.o)
 
