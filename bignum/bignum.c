@@ -96,8 +96,6 @@ static int bignum_cmp_abs(const bignum_t *val_1, const bignum_t *val_2)
 static int bignum_add_abs(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2)
 {
   int err = 0;
-  bignum_t res_copy;
-  bignum_init(&res_copy);
   /* Сумма двух чисел не превышает разрядность наибольшего из них + 1
    * Доп разряд понадобится для помещения единицы переноса */
   size_t max_len;
@@ -112,10 +110,9 @@ static int bignum_add_abs(bignum_t *res, const bignum_t *val_1, const bignum_t *
     max_len = val_1->length;
     max_val = val_1;
   }
-  err = bignum_ensure_capacity(&res_copy, max_len + 1);
+  err = bignum_ensure_capacity(res, max_len + 1);
   if (err < 0)
   {
-    bignum_delete(&res_copy);
     return err;
   }
   size_t min_len = (val_1->length < val_2->length) ? val_1->length : val_2->length;
@@ -125,32 +122,25 @@ static int bignum_add_abs(bignum_t *res, const bignum_t *val_1, const bignum_t *
   for (size_t i = 0; i < min_len; i++)
   {
     uint64_t sum = (uint64_t)val_1->val[i] + val_2->val[i] + carry;
-    res_copy.val[i] = (uint32_t)sum;
+    res->val[i] = (uint32_t)sum;
     carry = (uint32_t)(sum >> 32);
   }
   /* Цикл без сложения (но с учетом единицы переноса) */
   for (size_t i = min_len; i < max_len; i++)
   {
     uint64_t sum = (uint64_t)max_val->val[i] + carry;
-    res_copy.val[i] = (uint32_t)sum;
+    res->val[i] = (uint32_t)sum;
     carry = (uint32_t)(sum >> 32);
   }
-  res_copy.length = max_len;
+  res->length = max_len;
   /* Если есть единица переноса из старшего разряда, добавим ее здесь */
   if (carry)
   {
-    res_copy.val[max_len] = carry;
-    res_copy.length++;
+    res->val[max_len] = carry;
+    res->length++;
   }
 
-  bignum_normalize(&res_copy);
-  err = bignum_copy(res, &res_copy);
-  if (err < 0)
-  {
-    bignum_delete(&res_copy);
-    return err;
-  }
-  bignum_delete(&res_copy);
+  bignum_normalize(res);
   return 0;
 }
 /* Беззнаковое вычитание чисел с записью результата в res.
@@ -158,13 +148,9 @@ static int bignum_add_abs(bignum_t *res, const bignum_t *val_1, const bignum_t *
  * и корректного вычитания */
 static int bignum_sub_abs(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2)
 {
-  int err;
-  bignum_t res_copy;
-  bignum_init(&res_copy);
-  err = bignum_ensure_capacity(&res_copy, val_1->length);
+  int err = bignum_ensure_capacity(res, val_1->length);
   if (err < 0)
   {
-    bignum_delete(&res_copy);
     return err;
   }
   int borrow = 0;
@@ -175,12 +161,12 @@ static int bignum_sub_abs(bignum_t *res, const bignum_t *val_1, const bignum_t *
     if (diff < 0)
     {
       /* Если результат суммы отрицательный, берем по модулю 2^32 */
-      res_copy.val[i] = (uint32_t)(diff + (1LL << 32));
+      res->val[i] = (uint32_t)(diff + (1LL << 32));
       borrow = 1;
     }
     else
     {
-      res_copy.val[i] = (uint32_t)(diff);
+      res->val[i] = (uint32_t)(diff);
       borrow = 0;
     }
   }
@@ -192,29 +178,22 @@ static int bignum_sub_abs(bignum_t *res, const bignum_t *val_1, const bignum_t *
     if (diff < 0)
     {
       /* Если результат суммы отрицательный, берем по модулю 2^32 */
-      res_copy.val[i] = (uint32_t)(diff + (1LL << 32));
+      res->val[i] = (uint32_t)(diff + (1LL << 32));
       borrow = 1;
     }
     else
     {
-      res_copy.val[i] = (uint32_t)(diff);
+      res->val[i] = (uint32_t)(diff);
       borrow = 0;
     }
   }
-  res_copy.negative = false;
-  res_copy.length = val_1->length;
-  bignum_normalize(&res_copy);
-  err = bignum_copy(res, &res_copy);
-  if (err < 0)
-  {
-    bignum_delete(&res_copy);
-    return err;
-  }
-  bignum_delete(&res_copy);
+  res->negative = false;
+  res->length = val_1->length;
+  bignum_normalize(res);
   return 0;
 }
 /* Умножения числа bignum_t на единичный разряд с записью в res*/
-static int bignum_mul_digit(bignum_t *res, const bignum_t *val, uint32_t digit)
+int bignum_mul_digit(bignum_t *res, const bignum_t *val, uint32_t digit)
 {
   /* Результат умножение на "цифру" - возможное увеличение числа на разряд */
   bignum_t res_copy;
@@ -253,7 +232,7 @@ static int bignum_mul_digit(bignum_t *res, const bignum_t *val, uint32_t digit)
 }
 
 /* Сдвиг влево на n разрядов */
-static int bignum_shift_left(bignum_t *a, size_t n)
+int bignum_shift_left(bignum_t *a, size_t n)
 {
   if (n == 0)
     return 0;
@@ -267,7 +246,7 @@ static int bignum_shift_left(bignum_t *a, size_t n)
 }
 
 /* Сдвиг вправо на n разрядов */
-static void bignum_shift_right(bignum_t *a, size_t n)
+void bignum_shift_right(bignum_t *a, size_t n)
 {
   if (n == 0)
     return;
@@ -285,7 +264,7 @@ static void bignum_shift_right(bignum_t *a, size_t n)
 }
 
 /* Обнуление числа val */
-static int bignum_set_zero(bignum_t *val)
+int bignum_set_zero(bignum_t *val)
 {
   int err = bignum_ensure_capacity(val, 1);
   if (err < 0)
@@ -297,7 +276,7 @@ static int bignum_set_zero(bignum_t *val)
 }
 
 /* Сдвиг влево на n бит */
-static int bignum_shift_left_bits(bignum_t *a, size_t n)
+int bignum_shift_left_bits(bignum_t *a, size_t n)
 {
   size_t word_count = n / 32;
   size_t bit_count = n % 32;
@@ -333,7 +312,7 @@ static int bignum_shift_left_bits(bignum_t *a, size_t n)
 }
 
 /* Сдвиг вправо на n бит */
-static void bignum_shift_right_bits(bignum_t *a, size_t n)
+void bignum_shift_right_bits(bignum_t *a, size_t n)
 {
   size_t word_count = n / 32;
   size_t bit_count = n % 32;
@@ -443,7 +422,7 @@ void bignum_print_dec(const bignum_t *val)
   bignum_init(&tmp);
   bignum_copy(&tmp, val);
   tmp.negative = false;
-
+  void bignum_init(bignum_t * val);
   /* Собираем остатки от деления на 10^9. */
   uint32_t base = 1000000000;
   uint32_t *parts = NULL;
@@ -620,6 +599,43 @@ int bignum_from_gmp(bignum_t *dest, const mpz_t src)
   return 0;
 }
 
+int bignum_rand(bignum_t *res, size_t bits)
+{
+  if (!res || bits == 0)
+    return -ERR_INVALID_PARAM;
+
+  size_t bytes = (bits + 7) / 8;
+  uint8_t *buf = malloc(bytes);
+  if (!buf)
+    return -ERR_MALLOC_FAILED;
+
+  int err = read_random_bytes(buf, bytes);
+  if (err < 0)
+  {
+    free(buf);
+    return -ERR_GET_RANDOM_FAIL_TOTAL;
+  }
+
+  /* Обрезать старшие биты, чтобы число было ровно bits бит */
+  size_t extra = bytes * 8 - bits;
+  if (extra > 0)
+    buf[bytes - 1] &= (uint8_t)(0xFF >> extra);
+
+  err = bignum_from_ui8_array(res, buf, bytes, false);
+  free(buf);
+  return err;
+}
+
+int bignum_rand_range(bignum_t *res, const bignum_t *max)
+{
+  if (!res || !max) return -ERR_NULLPTR;
+  if (bignum_is_zero(max)) return -ERR_INVALID_PARAM;
+  size_t bits = bignum_length(max) * 32;  // верхняя оценка
+  int err = bignum_rand(res, bits);
+  if (err < 0) return err;
+  return bignum_mod(res, res, max);
+}
+
 long bignum_to_ui8_array(uint8_t *dest, size_t dest_size, const bignum_t *src)
 {
   if (!dest || !src)
@@ -724,20 +740,59 @@ void bignum_to_gmp(mpz_t dest, const bignum_t *src)
 
 size_t bignum_length(const bignum_t *val)
 {
-  return val->length;
+  if (val)
+  {
+    return val->length;
+  }
+  return 0;
 }
 size_t bignum_capacity(const bignum_t *val)
 {
-  return val->capacity;
+  if (val) {
+    return val->capacity;
+  }
+  return 0;
 }
 
 bool bignum_is_zero(const bignum_t *val)
 {
-  return (val->length == 1 && val->val[0] == 0);
+  if (val)
+  {
+    return (val->length == 1 && val->val[0] == 0);
+  }
+  return false;
 }
 bool bignum_is_even(const bignum_t *val)
 {
-  return (val->length > 0 && (val->val[0] & 1) == 0);
+  if (val){
+    return (val->length > 0 && (val->val[0] & 1) == 0);
+  }
+  return false;
+}
+
+bool bignum_is_negative(const bignum_t *val)
+{
+  if (val) {
+    return val->negative;
+  }
+  return false;
+}
+
+void bignum_set_negative(bignum_t *val, bool negative)
+{
+  if (val) {
+    val->negative = negative;
+  }
+}
+
+bool bignum_bit(const bignum_t *val, size_t pos)
+{
+  if (!val) {
+    return false;
+  }
+  size_t word = pos / 32;
+  if (word >= val->length) return false;
+  return (val->val[word] >> (pos % 32)) & 1;
 }
 
 int bignum_cmp(const bignum_t *val_1, const bignum_t *val_2)
@@ -763,43 +818,95 @@ int bignum_add(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2)
   {
     return -ERR_NULLPTR;
   }
-  int err;
+  int err = 0;
+  /* Проверка на алиасинг (запись результата на место операнда) */
+  bignum_t val_1_copy, val_2_copy;
+  bignum_init(&val_1_copy);
+  bignum_init(&val_2_copy);
+  const bignum_t *a = val_1;
+  const bignum_t *b = val_2;
+  /* Если указатели совпадают, то заменяем оригинал операнда на копию */
+  if (res == val_1)
+  {
+    err = bignum_copy(&val_1_copy, val_1);
+    if (err < 0)
+      goto cleanup;
+    a = &val_1_copy;
+  }
+  if (res == val_2)
+  {
+    err = bignum_copy(&val_2_copy, val_2);
+    if (err < 0)
+      goto cleanup;
+    b = &val_2_copy;
+  }
   /* Сравнение знаков операндов */
-  if (val_1->negative == val_2->negative)
+  if (a->negative == b->negative)
   {
     /* Для одного знака производится сложение по модулю,
      * а знак берется у любого операнда */
-    err = bignum_add_abs(res, val_1, val_2);
+    err = bignum_add_abs(res, a, b);
     if (err < 0)
     {
-      return err;
+      goto cleanup;
     }
-    res->negative = val_1->negative;
+    res->negative = a->negative;
   }
   else
   {
     /* Для разных знаков производится вычитание меньшего модуля
      * из большего, а знак берется у большего по модулю числа */
-    int cmp = bignum_cmp_abs(val_1, val_2);
+    int cmp = bignum_cmp_abs(a, b);
     if (cmp >= 0)
     {
-      err = bignum_sub_abs(res, val_1, val_2);
+      err = bignum_sub_abs(res, a, b);
       if (err < 0)
       {
-        return err;
+        goto cleanup;
       }
-      res->negative = val_1->negative;
+      res->negative = a->negative;
     }
     else
     {
-      err = bignum_sub_abs(res, val_2, val_1);
+      err = bignum_sub_abs(res, b, a);
       if (err < 0)
       {
-        return err;
+        goto cleanup;
       }
-      res->negative = val_2->negative;
+      res->negative = b->negative;
     }
   }
+  bignum_normalize(res);
+
+cleanup:
+  bignum_delete(&val_1_copy);
+  bignum_delete(&val_2_copy);
+  return err;
+}
+
+int bignum_add_digit(bignum_t *res, const bignum_t *val, uint32_t digit)
+{
+  if (!res || !val)
+    return -ERR_NULLPTR;
+
+  int err = bignum_ensure_capacity(res, val->length + 1);
+  if (err < 0)
+    return err;
+
+  uint64_t carry = digit;
+  for (size_t i = 0; i < val->length; i++)
+  {
+    uint64_t sum = (uint64_t)val->val[i] + carry;
+    res->val[i] = (uint32_t)sum;
+    carry = sum >> 32;
+  }
+  res->length = val->length;
+  if (carry)
+  {
+    res->val[res->length] = (uint32_t)carry;
+    res->length++;
+  }
+  res->negative = false;
   bignum_normalize(res);
   return 0;
 }
@@ -810,44 +917,100 @@ int bignum_sub(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2)
   {
     return -ERR_NULLPTR;
   }
-  int err;
+  int err = 0;
+  /* Проверка на алиасинг (запись результата на место операнда) */
+  bignum_t val_1_copy, val_2_copy;
+  bignum_init(&val_1_copy);
+  bignum_init(&val_2_copy);
+  const bignum_t *a = val_1;
+  const bignum_t *b = val_2;
+  /* Если указатели совпадают, то заменяем оригинал операнда на копию */
+  if (res == val_1)
+  {
+    err = bignum_copy(&val_1_copy, val_1);
+    if (err < 0)
+      goto cleanup;
+    a = &val_1_copy;
+  }
+  if (res == val_2)
+  {
+    err = bignum_copy(&val_2_copy, val_2);
+    if (err < 0)
+      goto cleanup;
+    b = &val_2_copy;
+  }
   /* Сравнение знаков операндов */
-  if (val_1->negative != val_2->negative)
+  if (a->negative != b->negative)
   {
     /* Для разных знаков производится сложение модулей,
      * а знак берется у первого числа */
-    err = bignum_add_abs(res, val_1, val_2);
+    err = bignum_add_abs(res, a, b);
     if (err < 0)
     {
-      return err;
+      goto cleanup;
     }
-    res->negative = val_1->negative;
+    res->negative = a->negative;
   }
   else
   {
     /* Для одного знака производится вычитание модулей,
      * а знак берется у наибольшего по модулю числа по правилу:
      * знак первого числа или инвертированный знак второго числа */
-    int cmp = bignum_cmp_abs(val_1, val_2);
+    int cmp = bignum_cmp_abs(a, b);
     if (cmp >= 0)
     {
-      err = bignum_sub_abs(res, val_1, val_2);
+      err = bignum_sub_abs(res, a, b);
       if (err < 0)
       {
-        return err;
+        goto cleanup;
       }
-      res->negative = val_1->negative;
+      res->negative = a->negative;
     }
     else
     {
-      err = bignum_sub_abs(res, val_2, val_1);
+      err = bignum_sub_abs(res, b, a);
       if (err < 0)
       {
-        return err;
+        goto cleanup;
       }
-      res->negative = !val_2->negative;
+      res->negative = !b->negative;
     }
   }
+  bignum_normalize(res);
+cleanup:
+  bignum_delete(&val_1_copy);
+  bignum_delete(&val_2_copy);
+  return err;
+}
+
+int bignum_sub_digit(bignum_t *res, const bignum_t *val, uint32_t digit)
+{
+  if (!res || !val)
+    return -ERR_NULLPTR;
+  if (val->length == 1 && val->val[0] < digit)
+    return -ERR_INVALID_PARAM; // Отрицательный параметр
+
+  int err = bignum_ensure_capacity(res, val->length);
+  if (err < 0)
+    return err;
+
+  int64_t borrow = digit;
+  for (size_t i = 0; i < val->length; i++)
+  {
+    int64_t diff = (int64_t)val->val[i] - borrow;
+    if (diff < 0)
+    {
+      res->val[i] = (uint32_t)(diff + ((int64_t)1 << 32));
+      borrow = 1;
+    }
+    else
+    {
+      res->val[i] = (uint32_t)diff;
+      borrow = 0;
+    }
+  }
+  res->length = val->length;
+  res->negative = false;
   bignum_normalize(res);
   return 0;
 }
@@ -893,7 +1056,7 @@ int bignum_mul(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2)
     {
       goto delete_all;
     }
-    err = bignum_add(&res_copy, &res_copy, &mul);
+    err = bignum_add_abs(&res_copy, &res_copy, &mul);
     if (err < 0)
     {
       goto delete_all;
@@ -915,49 +1078,16 @@ int bignum_divmod(bignum_t *quot, bignum_t *rem, const bignum_t *val_1, const bi
   {
     return -ERR_NULLPTR;
   }
+  if (quot == rem)
+  {
+    return -ERR_INVALID_PARAM;
+  }
   /* Деление на ноль */
   if (bignum_is_zero(val_2))
   {
     return -ERR_DIVISION_BY_ZERO;
   }
-  int err;
-  /* Тривиальные случаи */
-  int cmp = bignum_cmp_abs(val_1, val_2);
-  /* val_1 < val_2 по модулю */
-  if (cmp == -1)
-  {
-    err = bignum_set_zero(quot);
-    if (err < 0)
-    {
-      return err;
-    }
-    err = bignum_copy(rem, val_1);
-    if (err < 0)
-    {
-      return err;
-    }
-    return 0;
-  }
-  /* val_1 = val_2 по модулю */
-  if (cmp == 0)
-  {
-    uint32_t one = 1;
-    err = bignum_from_ui32_array(quot, &one, 1, val_1->negative ^ val_2->negative);
-    if (err < 0)
-    {
-      return err;
-    }
-    err = bignum_set_zero(rem);
-    if (err < 0)
-    {
-      return err;
-    }
-    return 0;
-  }
-  /* Основной цикл деления, реализованный на основе алгоритма Кнута */
-
-  /* Определим величину сдвига, чтобы старший бит старшей части делителя стал 1 */
-  int shift = bignum_leading_zeros(val_2->val[val_2->length - 1]);
+  int err = 0;
   /* Локальные копии для сохранности входных параметров */
   bignum_t a;
   bignum_t b;
@@ -966,30 +1096,66 @@ int bignum_divmod(bignum_t *quot, bignum_t *rem, const bignum_t *val_1, const bi
   err = bignum_copy(&a, val_1);
   if (err < 0)
   {
-    return err;
+    goto cleanup;
   }
   err = bignum_copy(&b, val_2);
   if (err < 0)
   {
-    return err;
+    goto cleanup;
   }
+  /* Тривиальные случаи */
+  int cmp = bignum_cmp_abs(&a, &b);
+  /* val_1 < val_2 по модулю */
+  if (cmp == -1)
+  {
+    err = bignum_copy(rem, &a); // сначала rem
+    if (err < 0)
+    {
+      goto cleanup;
+    }
+    err = bignum_set_zero(quot); // потом quot
+    if (err < 0)
+    {
+      goto cleanup;
+    }
+    goto cleanup;
+  }
+  /* val_1 = val_2 по модулю */
+  if (cmp == 0)
+  {
+    uint32_t one = 1;
+    err = bignum_from_ui32_array(quot, &one, 1, a.negative ^ b.negative);
+    if (err < 0)
+    {
+      goto cleanup;
+    }
+    err = bignum_set_zero(rem);
+    if (err < 0)
+    {
+      goto cleanup;
+    }
+    goto cleanup;
+  }
+  /* Основной цикл деления, реализованный на основе алгоритма Кнута */
+  /* Определим величину сдвига, чтобы старший бит старшей части делителя стал 1 */
 
+  int shift = bignum_leading_zeros(val_2->val[val_2->length - 1]);
   err = bignum_shift_left_bits(&b, shift);
   if (err < 0)
   {
-    return err;
+    goto cleanup;
   }
   /* Для алгоритма критично появление у делимого нового разряда,
    * поэтому добавим его вручную */
   err = bignum_push(&a, 0);
   if (err < 0)
   {
-    return err;
+    goto cleanup;
   }
   err = bignum_shift_left_bits(&a, shift);
   if (err < 0)
   {
-    return err;
+    goto cleanup;
   }
 
   size_t dr_len = b.length; // divisor
@@ -999,9 +1165,7 @@ int bignum_divmod(bignum_t *quot, bignum_t *rem, const bignum_t *val_1, const bi
   err = bignum_ensure_capacity(quot, m + 1);
   if (err < 0)
   {
-    bignum_delete(&a);
-    bignum_delete(&b);
-    return err;
+    goto cleanup;
   }
   quot->length = m + 1;
   /* В рамках каждой итерации цикла рассматривается
@@ -1099,18 +1263,17 @@ int bignum_divmod(bignum_t *quot, bignum_t *rem, const bignum_t *val_1, const bi
   err = bignum_from_ui32_array(rem, a.val, dr_len, false);
   if (err < 0)
   {
-    bignum_delete(&a);
-    bignum_delete(&b);
-    return err;
+    goto cleanup;
   }
   /* Денормализация: сдвиг вправо на shift. */
   bignum_shift_right_bits(rem, shift);
   rem->negative = val_1->negative;
   bignum_normalize(rem);
 
+cleanup:
   bignum_delete(&a);
   bignum_delete(&b);
-  return 0;
+  return err;
 }
 
 /* Использует divmod, но остаток игнорирует */
@@ -1297,6 +1460,86 @@ delete_from_res_copy:
   return err;
 }
 
+int bignum_sqrt(bignum_t *res, const bignum_t *val)
+{
+  int err = 0;
+  if (!res || !val)
+  {
+    return -ERR_NULLPTR;
+  }
+  /* Тривиальные случаи */
+  /* Отрицательный аргумент */
+  if (val->negative)
+  {
+    return -ERR_INVALID_PARAM;
+  }
+  /* Нуль */
+  if (bignum_is_zero(val))
+  {
+    err = bignum_set_zero(res);
+    return err;
+  }
+  /* Единица */
+  bignum_t one;
+  bignum_init(&one);
+  err = bignum_from_ui8_array(&one, (uint8_t[]){1}, 1, 0);
+  if (err < 0)
+  {
+    bignum_delete(&one);
+    return err;
+  }
+  if (bignum_cmp(val, &one) == 0)
+  {
+    err = bignum_copy(res, val);
+    bignum_delete(&one);
+    return err;
+  }
+  /* Реализуется итеративная формула :
+   * - y = (x + val / x) / 2
+   * - x = y
+   * Если y >= x, тогда x является ответом
+   * Для начального приближения x берется значение
+   * x = 2^((bits + 1) / 2) */
+  bignum_t x, y;
+  bignum_init(&x), bignum_init(&y);
+  err = bignum_from_ui8_array(&x, (uint8_t[]){1}, 1, 0);
+  if (err < 0)
+  {
+    goto cleanup;
+  }
+  size_t bits = (val->length - 1) * 32 + (32 - bignum_leading_zeros(val->val[val->length - 1]));
+  err = bignum_shift_left_bits(&x, (bits + 1) / 2);
+  if (err < 0)
+  {
+    goto cleanup;
+  }
+  while (1)
+  {
+    err = bignum_div(&y, val, &x);
+    if (err < 0)
+      goto cleanup;
+    err = bignum_add(&y, &y, &x);
+    if (err < 0)
+      goto cleanup;
+    bignum_shift_right_bits(&y, 1);
+
+    int cmp = bignum_cmp_abs(&y, &x);
+    if (cmp > -1)
+    {
+      break;
+    }
+
+    err = bignum_copy(&x, &y);
+    if (err < 0)
+      goto cleanup;
+  }
+  err = bignum_copy(res, &x);
+cleanup:
+  bignum_delete(&x);
+  bignum_delete(&y);
+  return err;
+}
+
 int bignum_gcd(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2)
 {
   if (!res || !val_1 || !val_2)
@@ -1385,4 +1628,20 @@ int bignum_lcm(bignum_t *res, const bignum_t *val_1, const bignum_t *val_2)
 delete_all:
   bignum_delete(&g);
   return err;
+}
+
+int bignum_mod_ui32(uint32_t *res, const bignum_t *val, uint32_t divisor)
+{
+  if (!res || !val)
+    return -ERR_NULLPTR;
+  if (divisor == 0)
+    return -ERR_DIVISION_BY_ZERO;
+
+  uint64_t r = 0;
+  for (size_t i = val->length; i > 0; i--)
+  {
+    r = ((r << 32) | val->val[i - 1]) % divisor;
+  }
+  *res = (uint32_t)r;
+  return 0;
 }
