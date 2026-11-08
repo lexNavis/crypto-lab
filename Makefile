@@ -1,7 +1,7 @@
 CC       = gcc
 CFLAGS = -O2 -g -march=native -Wall -Wextra
 LDFLAGS  =
-LDLIBS   = -lgmp -lpthread -lcjson
+LDLIBS   = -lgmp -lpthread -lcjson -lm
 
 BUILD    = build
 OBJDIR   = $(BUILD)/obj
@@ -13,7 +13,10 @@ SRCS     = main.c \
            rsa/prime.c rsa/rsa.c \
            streebog/streebog.c \
            tests/test_kuz.c tests/args.c tests/test_rsa.c tests/test_streebog.c tests/test_bignum.c \
-           bignum/bignum.c
+           tests/test_mersen.c tests/test_primality.c \
+           bignum/bignum.c \
+           mersen/mersen.c \
+           primality/primality.c
 
 OBJS     = $(SRCS:%.c=$(OBJDIR)/%.o)
 
