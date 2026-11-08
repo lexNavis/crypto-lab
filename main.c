@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include "common/config.h"
 
 int run_kuz_test(bool use_random_key, const char *custom_block);
 int run_streebog_test(const char *custom_message);
 int run_rsa_test(unsigned int bits, bool from_file, const char *message);
 int run_bignum_test(const bignum_operation_t *ops, size_t count);
+int run_mersen_test(uint32_t exp);
+int run_primality_test(void);
 
 int main(int argc, char **argv)
 {
@@ -36,12 +39,22 @@ int main(int argc, char **argv)
   {
     rc = run_bignum_test(cfg.bignum.operations, cfg.bignum.count);
   }
+  else if (strcmp(argv[1], "mersen") == 0)
+  {
+    rc = run_mersen_test(136279841);
+  }
+  else if (strcmp(argv[1], "primality") == 0)
+  {
+    rc = run_primality_test();
+  }
   else if (strcmp(argv[1], "all") == 0)
   {
     rc |= run_kuz_test(cfg.kuznyechik.use_random_key, cfg.kuznyechik.block);
     rc |= run_streebog_test(cfg.streebog.message);
     rc |= run_rsa_test(cfg.rsa.bits, cfg.rsa.from_file, cfg.rsa.message);
     rc |= run_bignum_test(cfg.bignum.operations, cfg.bignum.count);
+    rc |= run_mersen_test(136279841);
+    rc |= run_primality_test();
   }
   else
   {
