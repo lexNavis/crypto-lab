@@ -9,6 +9,7 @@ int run_rsa_test(unsigned int bits, bool from_file, const char *message);
 int run_bignum_test(const bignum_operation_t *ops, size_t count);
 int run_mersen_test(uint32_t exp);
 int run_primality_test(void);
+int run_poly_test(void);
 
 int main(int argc, char **argv)
 {
@@ -46,6 +47,10 @@ int main(int argc, char **argv)
   else if (strcmp(argv[1], "primality") == 0)
   {
     rc = run_primality_test();
+  }
+  else if (strcmp(argv[1], "poly") == 0)
+  {
+    rc = run_poly_test();
   }
   else if (strcmp(argv[1], "all") == 0)
   {
