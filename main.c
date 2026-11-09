@@ -10,7 +10,7 @@ int run_bignum_test(const bignum_operation_t *ops, size_t count);
 int run_mersen_test(uint32_t exp);
 int run_primality_test(void);
 int run_poly_test(void);
-int run_aks_test(void);
+int run_deterministic_test(void);
 
 int main(int argc, char **argv)
 {
@@ -53,9 +53,9 @@ int main(int argc, char **argv)
   {
     rc = run_poly_test();
   }
-  else if (strcmp(argv[1], "aks") == 0)
+  else if (strcmp(argv[1], "deterministic") == 0)
   {
-    rc = run_aks_test();
+    rc = run_deterministic_test();
   }
   else if (strcmp(argv[1], "all") == 0)
   {
@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     rc |= run_bignum_test(cfg.bignum.operations, cfg.bignum.count);
     rc |= run_mersen_test(136279841);
     rc |= run_primality_test();
-    rc |= run_aks_test();
+    rc |= run_deterministic_test();
   }
   else
   {

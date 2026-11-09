@@ -595,161 +595,207 @@ int run_bignum_alias_tests(void)
   return rc;
 }
 
+/* Вспомогательная: сверить bignum с mpz. */
+static int check_eq_gmp(const bignum_t *b, const mpz_t g, const char *label)
+{
+  mpz_t tmp;
+  mpz_init(tmp);
+  bignum_to_gmp(tmp, b);
+  int rc = 0;
+  if (mpz_cmp(tmp, g) != 0)
+  {
+    fprintf(stderr, "FAIL %s\n  bignum: ", label);
+    bignum_print_dec(b);
+    fprintf(stderr, "\n  gmp:    ");
+    gmp_fprintf(stderr, "%Zd\n", g);
+    rc = -1;
+  }
+  mpz_clear(tmp);
+  return rc;
+}
+
+/* Сгенерировать случайное bignum из bits бит через GMP (для эталона
+ * и для входа — один и тот же объект), потом bignum_from_gmp. */
+static int random_bignum(bignum_t *b, unsigned int bits)
+{
+  mpz_t g;
+  mpz_init(g);
+  gmp_randstate_t state;
+  gmp_randinit_default(state);
+  /* seed — фиксированный для воспроизводимости; для отладки можно
+   * заменить на time(NULL) или read_random_bytes. */
+  gmp_randseed_ui(state, 12345);
+  mpz_urandomb(g, state, bits);
+  int err = bignum_from_gmp(b, g);
+  gmp_randclear(state);
+  mpz_clear(g);
+  return err;
+}
+
 int run_bignum_test(const bignum_operation_t *ops, size_t count)
 {
-  printf("------------------RUNNING BIGNUM TEST------------------\n");
-  for (size_t i = 0; i < count; i++)
-  {
-    const bignum_operation_t *op = &ops[i];
+  (void)ops;
+  (void)count;
 
-    bignum_t a, b, res, q, r, mod;
+  printf("------------------RUNNING BIGNUM RANDOM TESTS------------------\n");
+
+  gmp_randstate_t state;
+  gmp_randinit_default(state);
+  gmp_randseed_ui(state, 0xC0FFEE);
+
+  int rc = 0;
+  const int N = 100;
+  const unsigned int BITS = 128;
+
+  for (int iter = 0; iter < N; iter++)
+  {
+    mpz_t ga, gb;
+    mpz_init(ga);
+    mpz_init(gb);
+    mpz_urandomb(ga, state, BITS);
+    mpz_urandomb(gb, state, BITS);
+
+    bignum_t a, b, res, q, r;
     bignum_init(&a);
     bignum_init(&b);
     bignum_init(&res);
     bignum_init(&q);
     bignum_init(&r);
-    bignum_init(&mod);
 
-    bignum_from_hex_string(&a, op->a, op->neg_a);
-    bignum_from_hex_string(&b, op->b, op->neg_b);
-    if (op->mod[0] != '\0')
-    {
-      bignum_from_hex_string(&mod, op->mod, false);
+    int err = bignum_from_gmp(&a, ga);
+    if (err < 0) { rc = -1; goto cleanup_iter; }
+    err = bignum_from_gmp(&b, gb);
+    if (err < 0) { rc = -1; goto cleanup_iter; }
+
+    mpz_t gr, gq, gr2;
+    mpz_init(gr);
+    mpz_init(gq);
+    mpz_init(gr2);
+
+    /* Печатать подробно только первые 3 итерации */
+    int verbose = (iter < 3);
+
+    /* add */
+    mpz_add(gr, ga, gb);
+    err = bignum_add(&res, &a, &b);
+    if (err < 0) { fprintf(stderr, "iter %d: add err=%d\n", iter, err); rc = -1; }
+    else if (check_eq_gmp(&res, gr, "add") < 0) { rc = -1; }
+    else if (verbose) {
+      printf("iter %d add: ", iter);
+      bignum_print(&a); printf(" + "); bignum_print(&b); printf(" = "); bignum_print(&res);
     }
 
-    int err = 0;
-    if (strcmp(op->op, "add") == 0)
-    {
-      err = bignum_add(&res, &a, &b);
-      if (err == 0)
-      {
-        bignum_print_dec(&a);
-        printf(" + ");
-        bignum_print_dec(&b);
-        printf(" = ");
-        bignum_print_dec(&res);
-        printf("\n");
-      }
+    /* sub */
+    mpz_sub(gr, ga, gb);
+    err = bignum_sub(&res, &a, &b);
+    if (err < 0) { fprintf(stderr, "iter %d: sub err=%d\n", iter, err); rc = -1; }
+    else if (check_eq_gmp(&res, gr, "sub") < 0) { rc = -1; }
+    else if (verbose) {
+      printf("iter %d sub: ", iter);
+      bignum_print(&a); printf(" - "); bignum_print(&b); printf(" = "); bignum_print(&res);
     }
-    else if (strcmp(op->op, "sub") == 0)
-    {
-      err = bignum_sub(&res, &a, &b);
-      if (err == 0)
-      {
-        bignum_print_dec(&a);
-        printf(" - ");
-        bignum_print_dec(&b);
-        printf(" = ");
-        bignum_print_dec(&res);
-        printf("\n");
-      }
+
+    /* mul */
+    mpz_mul(gr, ga, gb);
+    err = bignum_mul(&res, &a, &b);
+    if (err < 0) { fprintf(stderr, "iter %d: mul err=%d\n", iter, err); rc = -1; }
+    else if (check_eq_gmp(&res, gr, "mul") < 0) { rc = -1; }
+    else if (verbose) {
+      printf("iter %d mul: ", iter);
+      bignum_print(&a); printf(" * "); bignum_print(&b); printf(" = "); bignum_print(&res);
     }
-    else if (strcmp(op->op, "mul") == 0)
-    {
-      err = bignum_mul(&res, &a, &b);
-      if (err == 0)
-      {
-        bignum_print_dec(&a);
-        printf(" * ");
-        bignum_print_dec(&b);
-        printf(" = ");
-        bignum_print_dec(&res);
-        printf("\n");
-      }
-    }
-    else if (strcmp(op->op, "divmod") == 0)
-    {
+
+    /* divmod */
+    if (mpz_sgn(gb) != 0) {
+      mpz_tdiv_qr(gq, gr2, ga, gb);
       err = bignum_divmod(&q, &r, &a, &b);
-      if (err == 0)
-      {
-        bignum_print_dec(&a);
-        printf(" / ");
-        bignum_print_dec(&b);
-        printf(" = ");
-        bignum_print_dec(&q);
-        printf(", remainder ");
-        bignum_print_dec(&r);
-        printf("\n");
+      if (err < 0) { fprintf(stderr, "iter %d: divmod err=%d\n", iter, err); rc = -1; }
+      else {
+        if (check_eq_gmp(&q, gq, "divmod (q)") < 0) { rc = -1; }
+        if (check_eq_gmp(&r, gr2, "divmod (r)") < 0) { rc = -1; }
+        if (verbose) {
+          printf("iter %d divmod: ", iter);
+          bignum_print(&a); printf(" / "); bignum_print(&b);
+          printf(" = "); bignum_print(&q); printf(", rem "); bignum_print(&r);
+        }
       }
     }
-    else if (strcmp(op->op, "pow") == 0)
-    {
-      err = bignum_pow(&res, &a, &b);
-      if (err == 0)
-      {
-        bignum_print_dec(&a);
-        printf(" ^ ");
-        bignum_print_dec(&b);
-        printf(" = ");
-        bignum_print_dec(&res);
-        printf("\n");
-      }
+
+    /* gcd */
+    mpz_gcd(gr, ga, gb);
+    err = bignum_gcd(&res, &a, &b);
+    if (err < 0) { fprintf(stderr, "iter %d: gcd err=%d\n", iter, err); rc = -1; }
+    else if (check_eq_gmp(&res, gr, "gcd") < 0) { rc = -1; }
+    else if (verbose) {
+      printf("iter %d gcd: gcd(", iter);
+      bignum_print(&a); printf(", "); bignum_print(&b); printf(") = "); bignum_print(&res);
     }
-    else if (strcmp(op->op, "pow_mod") == 0)
-    {
-      err = bignum_pow_mod(&res, &a, &b, &mod);
-      if (err == 0)
-      {
-        bignum_print_dec(&a);
-        printf(" ^ ");
-        bignum_print_dec(&b);
-        printf(" mod ");
-        bignum_print_dec(&mod);
-        printf(" = ");
-        bignum_print_dec(&res);
-        printf("\n");
-      }
-    }
-    else if (strcmp(op->op, "gcd") == 0)
-    {
-      err = bignum_gcd(&res, &a, &b);
-      if (err == 0)
-      {
-        printf("gcd(");
-        bignum_print_dec(&a);
-        printf(", ");
-        bignum_print_dec(&b);
-        printf(") = ");
-        bignum_print_dec(&res);
-        printf("\n");
-      }
-    }
-    else if (strcmp(op->op, "lcm") == 0)
-    {
+
+    /* lcm */
+    if (mpz_sgn(ga) != 0 && mpz_sgn(gb) != 0) {
+      mpz_lcm(gr, ga, gb);
       err = bignum_lcm(&res, &a, &b);
-      if (err == 0)
-      {
-        printf("lcm(");
-        bignum_print_dec(&a);
-        printf(", ");
-        bignum_print_dec(&b);
-        printf(") = ");
-        bignum_print_dec(&res);
-        printf("\n");
+      if (err < 0) { fprintf(stderr, "iter %d: lcm err=%d\n", iter, err); rc = -1; }
+      else if (check_eq_gmp(&res, gr, "lcm") < 0) { rc = -1; }
+      else if (verbose) {
+        printf("iter %d lcm: lcm(", iter);
+        bignum_print(&a); printf(", "); bignum_print(&b); printf(") = "); bignum_print(&res);
       }
     }
-    else if (strcmp(op->op, "cmp") == 0)
+
+    /* pow_mod */
     {
-      printf("cmp(");
-      bignum_print_dec(&a);
-      printf(", ");
-      bignum_print_dec(&b);
-      printf(") = %d\n", bignum_cmp(&a, &b));
-    }
-    else
-    {
-      printf("unknown op: %s\n", op->op);
+      mpz_t gm, ge;
+      mpz_init(gm);
+      mpz_init(ge);
+      mpz_set(gm, gb);
+      if (mpz_sgn(gm) == 0) mpz_set_ui(gm, 1);
+      mpz_setbit(gm, 0);
+      mpz_urandomb(ge, state, 8);
+      mpz_add_ui(ge, ge, 1);
+
+      bignum_t m_bn, e_bn;
+      bignum_init(&m_bn);
+      bignum_init(&e_bn);
+      bignum_from_gmp(&m_bn, gm);
+      bignum_from_gmp(&e_bn, ge);
+
+      mpz_powm(gr, ga, ge, gm);
+      err = bignum_pow_mod(&res, &a, &e_bn, &m_bn);
+      if (err < 0) { fprintf(stderr, "iter %d: pow_mod err=%d\n", iter, err); rc = -1; }
+      else if (check_eq_gmp(&res, gr, "pow_mod") < 0) { rc = -1; }
+      else if (verbose) {
+        printf("iter %d pow_mod: ", iter);
+        bignum_print(&a); printf(" ^ "); bignum_print(&e_bn);
+        printf(" mod "); bignum_print(&m_bn); printf(" = "); bignum_print(&res);
+      }
+
+      bignum_delete(&m_bn);
+      bignum_delete(&e_bn);
+      mpz_clear(gm);
+      mpz_clear(ge);
     }
 
-    if (err < 0)
-      printf("  error: %d\n", err);
+    mpz_clear(gr);
+    mpz_clear(gq);
+    mpz_clear(gr2);
 
+cleanup_iter:
     bignum_delete(&a);
     bignum_delete(&b);
     bignum_delete(&res);
     bignum_delete(&q);
     bignum_delete(&r);
-    bignum_delete(&mod);
+    mpz_clear(ga);
+    mpz_clear(gb);
   }
-  return 0;
+
+  gmp_randclear(state);
+
+  if (rc == 0)
+    fprintf(stderr, "ALL BIGNUM RANDOM TESTS PASSED (%d iterations, %u bits)\n", N, BITS);
+  else
+    fprintf(stderr, "BIGNUM RANDOM TESTS FAILED\n");
+
+  return rc;
 }

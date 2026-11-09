@@ -1,4 +1,4 @@
-#include "../primality/poly.h"
+#include "poly.h"
 #include <stdlib.h>
 #include <string.h>
 
